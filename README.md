@@ -1,0 +1,103 @@
+# Presence Control — Rust Complete Rewrite
+
+A native Windows Discord Rich Presence studio built with Rust and Slint. This is a separate Git repository nested in the Presence Control workspace, inherited from **Presence Control Rust Rewrite**. Its application code and backend run in Rust; its native interface is defined in Slint markup and compiled into the executable.
+
+The Slint studio follows the Rust rewrite's black interface, sidebar navigation, saved-presence list, profile editor, Discord-style preview, application rules, activity history, archive, and settings. It does not use a webview, Tauri, React, Node.js, JavaScript, or PowerShell to run the application.
+
+## Build and run
+
+Build on Windows with Rust 1.92 or later using the MSVC toolchain and Microsoft C++ Build Tools/Windows SDK. Cargo downloads the Rust dependencies on the first build. No npm installation or WebView2 runtime is required.
+
+From this directory:
+
+```powershell
+cargo run -p presence-desktop
+```
+
+Build a release executable:
+
+```powershell
+cargo build --release -p presence-desktop
+```
+
+The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in `C:/Users/Jonathan/AppData/Local/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
+
+A built portable copy is available in this checkout at **`release/presence-control.exe`**. Close the isolated test window before launching it for normal use.
+
+The build embeds the application icon. Closing the window saves recorded time and disconnects Discord; there is no background tray mode.
+
+The UI uses Slint's native Winit window backend and software renderer. Application detection uses Windows APIs directly, and Discord transport uses Rust/Tokio named pipes.
+
+## Use
+
+The [manual testing checklist](docs/manual-testing.md) covers real Discord, Windows dialogs, keyboard input, resizing, and persistence. Automated results are recorded in [verification.md](docs/verification.md).
+
+1. Create an application in the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Open **Settings** and save the public **Application ID**. A profile can supply an optional override in its **Connection** tab.
+3. Edit a presence's display name, activity type, details, state, artwork, and optional buttons, then save it.
+4. Open Discord desktop with activity sharing enabled and select **Go live**.
+
+Profiles support Playing, Listening to, Watching, and Competing in activity types, elapsed timers, manually configured playback durations, artwork asset keys or HTTPS image URLs, and up to two HTTP/HTTPS buttons. Media playback is not read or controlled.
+
+Application rules match exact process names without regard to case, with an optional `.exe` suffix and optional window-title filter. The first enabled matching rule wins. Automatic presence checks run every 15 seconds; manual presence takes priority. Stopping presence also disables automatic mode.
+
+Templates in display names, details, states, and artwork hover text support `{{app}}`, `{{title}}`, and `{{process}}`. Application names prefer the executable's ProductName version resource, with the executable's filename as a fallback.
+
+Optional application-time recording starts only after a confirmed automatic presence. It pauses on disconnection, manual takeover, disabled recording, or changed application. Activity includes cumulative totals, up to 500 recent sessions, recent events, and a permanent archive. Archiving a total starts a fresh total for future recordings and preserves session history; deleting a session preserves cumulative time.
+
+## Data and migration from the Rust rewrite
+
+The Slint app has its own directory:
+
+```text
+%APPDATA%\dev.presence.control.rust.slint\
+  config.json
+  usage.json
+  archive.json
+```
+
+To use an explicit data directory, set `PRESENCE_CONTROL_DATA_DIR` before starting the app:
+
+```powershell
+$env:PRESENCE_CONTROL_DATA_DIR = Join-Path $PWD 'local-data'
+cargo run -p presence-desktop
+```
+
+To move profiles and rules from **Presence Control Rust Rewrite**, export its workspace in Settings and import that JSON file in the Slint app. Import replaces the Slint configuration and leaves automatic mode off. Export the current Slint workspace first if it contains profiles you want to keep.
+
+Workspace exports contain configuration, not usage history or archives. To migrate history, close both Rust applications, back up the Slint data directory, and copy the corresponding `config.json`, `usage.json`, and `archive.json` together from `%APPDATA%\dev.presence.control.rust\` to the Slint directory. Copying all three preserves rule IDs and their associated totals and sessions. This is replacement, not a history merge. The source application's files are not moved or automatically modified.
+
+Malformed local data is preserved; recovery files receive subsequent writes. Recent unarchived events are held in memory. The app stores no Discord account token, bot token, or client secret.
+
+## Architecture and verification
+
+```text
+crates/presence-core/        Inherited Rust backend, engine, IPC, storage, native detection
+crates/presence-desktop/
+  ui/                       Compiled Slint interface and components
+  src/main.rs               Native event loop and asynchronous backend adapter
+  src/editor.rs             Rust drafts, validation, previews, rules, activity projections
+  src/native.rs             Data directory, instance guard, Developer Portal action
+  src/artwork.rs            Bounded HTTPS image loading and decoding
+assets/                     Inherited branding and icon assets
+docs/migration.md           Source provenance and behavior inventory
+```
+
+```powershell
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all -- --check
+cargo run -p presence-desktop -- --smoke-test
+```
+
+The workspace test suite currently passes 69 tests, including the native Windows scan, Rust editor transitions, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, and bounded artwork pixels. The latest completed native smoke run passes 52 behavior checks. See [verification details](docs/verification.md) for the verified scope and remaining checks.
+
+The optional native smoke run opens the actual Slint window and exercises the Rust callback/backend path, then checks persisted data after reopening the backend. It always creates an isolated workspace beneath `artifacts/native-smoke/<run-id>/` and writes a JSON report and screenshots there. Normal application data is not used.
+
+`presence-core` is independently usable without the desktop UI:
+
+```powershell
+cargo run -p presence-core --example headless -- .\headless-data
+```
+
+Windows application detection is platform specific. Real Discord publishing requires Discord desktop and a valid application ID. Automated mock IPC tests do not establish that a particular real Discord account/application has been verified. The project currently builds a portable executable; it does not provide an installer or tray mode.

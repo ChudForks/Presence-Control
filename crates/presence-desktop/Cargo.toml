@@ -1,0 +1,33 @@
+[package]
+name = "presence-desktop"
+version = "0.1.0"
+description = "Presence Control native Rust and Slint desktop studio"
+edition = "2021"
+rust-version = "1.92"
+build = "build.rs"
+
+[[bin]]
+name = "presence-control"
+path = "src/main.rs"
+
+[dependencies]
+presence-core = { path = "../presence-core" }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-winit", "renderer-software", "accessibility"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+uuid = { version = "1", features = ["v4"] }
+rfd = "0.15"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+winresource = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+

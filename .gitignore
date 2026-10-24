@@ -1,0 +1,8 @@
+/target/
+/artifacts/
+/headless-data/
+*.log
+.env*
+/.cargo/config.toml
+/release/
+

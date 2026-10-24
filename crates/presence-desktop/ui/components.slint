@@ -1,0 +1,292 @@
+import { ScrollView } from "std-widgets.slint";
+
+export global Colors {
+    out property <color> background: #000000;
+    out property <color> surface: #0a0a0a;
+    out property <color> raised: #111111;
+    out property <color> line: #262626;
+    out property <color> text: #f2f2f2;
+    out property <color> muted: #818181;
+}
+
+export component Glyph inherits Image {
+    in property <string> name;
+    width: 18px;
+    height: 18px;
+    colorize: #a3a3a3;
+    image-fit: contain;
+    source: name == "layers" ? @image-url("icons/layers.svg") :
+        name == "wand" ? @image-url("icons/wand.svg") :
+        name == "activity" ? @image-url("icons/activity.svg") :
+        name == "settings" ? @image-url("icons/settings.svg") :
+        name == "plus" ? @image-url("icons/plus.svg") :
+        name == "copy" ? @image-url("icons/copy.svg") :
+        name == "trash" ? @image-url("icons/trash.svg") :
+        name == "check" ? @image-url("icons/check.svg") :
+        name == "image" ? @image-url("icons/image.svg") :
+        name == "link" ? @image-url("icons/link.svg") :
+        name == "plug" ? @image-url("icons/plug.svg") :
+        name == "radio" ? @image-url("icons/radio.svg") :
+        name == "monitor" ? @image-url("icons/monitor.svg") :
+        name == "clock" ? @image-url("icons/clock.svg") :
+        name == "archive" ? @image-url("icons/archive.svg") :
+        name == "refresh" ? @image-url("icons/refresh.svg") :
+        name == "help" ? @image-url("icons/help.svg") :
+        name == "external" ? @image-url("icons/external.svg") :
+        name == "arrow" ? @image-url("icons/arrow.svg") :
+        name == "search" ? @image-url("icons/search.svg") :
+        name == "audio" ? @image-url("icons/audio.svg") :
+        name == "close" ? @image-url("icons/close.svg") :
+        name == "up" ? @image-url("icons/up.svg") :
+        name == "down" ? @image-url("icons/down.svg") :
+        name == "stop" ? @image-url("icons/stop.svg") :
+        @image-url("icons/code.svg");
+}
+
+export component UiButton inherits Rectangle {
+    in property <string> text;
+    in property <string> icon;
+    in property <bool> primary: false;
+    in property <bool> danger: false;
+    in property <bool> compact: false;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: content.preferred-width + (compact ? 20px : 28px);
+    height: compact ? 32px : 40px;
+    horizontal-stretch: 0;
+    border-width: 1px;
+    border-radius: 8px;
+    border-color: primary ? #ffffff : danger ? #a8394d : touch.has-hover ? #525252 : #333333;
+    background: primary ? (touch.has-hover ? #ffffff : #ededed) : danger ? #a8394d : touch.has-hover ? #191919 : #111111;
+    opacity: enabled ? 1 : 0.38;
+    accessible-role: button;
+    accessible-label: text;
+    accessible-enabled: enabled;
+    accessible-action-default => { if enabled { root.clicked(); } }
+    content := HorizontalLayout { cross-axis-alignment: center;
+        alignment: center;
+        spacing: 8px;
+        padding-left: 0px;
+        padding-right: 0px;
+        if icon != "": Glyph { name: root.icon; colorize: root.primary ? #151515 : #a3a3a3; width: 15px; height: 15px; }
+        Text { text: root.text; color: root.primary ? #151515 : #d5d5d5; font-size: root.compact ? 11px : 12px; font-weight: 600; vertical-alignment: center; }
+    }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
+    forward-focus: focus;
+}
+
+export component IconButton inherits Rectangle {
+    in property <string> icon;
+    in property <string> label;
+    in property <bool> enabled: true;
+    callback clicked();
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    background: touch.has-hover ? #191919 : transparent;
+    border-width: touch.has-hover ? 1px : 0px;
+    border-color: #333333;
+    opacity: enabled ? 1 : 0.35;
+    accessible-role: button;
+    accessible-label: label;
+    accessible-enabled: enabled;
+    accessible-action-default => { if enabled { root.clicked(); } }
+    Glyph { name: root.icon; x: 8px; y: 8px; width: 16px; height: 16px; }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
+    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
+    forward-focus: focus;
+}
+
+export component Input inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <string> label: root.placeholder;
+    in property <bool> enabled: true;
+    callback edited(string);
+    height: 42px;
+    border-width: 1px;
+    border-color: edit.has-focus ? #8e8e8e : #262626;
+    background: #050505;
+    border-radius: 8px;
+    clip: true;
+    forward-focus: edit;
+    accessible-role: none;
+    edit := TextInput {
+        x: 13px;
+        y: 1px;
+        width: max(parent.width - 26px, self.preferred-width);
+        height: parent.height - 2px;
+        text <=> root.text;
+        enabled: root.enabled;
+        accessible-label: root.label;
+        accessible-placeholder-text: root.placeholder;
+        accessible-enabled: root.enabled;
+        color: #f2f2f2;
+        font-size: 13px;
+        single-line: true;
+        vertical-alignment: center;
+        selection-background-color: #555555;
+        selection-foreground-color: #ffffff;
+        edited => { root.edited(self.text); }
+        cursor-position-changed(pos) => {
+            if pos.x + self.x < 13px { self.x = 13px - pos.x; }
+            if pos.x + self.x > parent.width - 13px { self.x = parent.width - 13px - pos.x; }
+        }
+    }
+    if text == "": Text { x: 13px; width: parent.width - 26px; height: parent.height; text: root.placeholder; color: #777777; font-size: 13px; vertical-alignment: center; }
+}
+
+export component Field inherits VerticalLayout {
+    in property <string> label;
+    in property <string> hint;
+    in property <string> placeholder;
+    in-out property <string> value;
+    in property <bool> enabled: true;
+    callback edited(string);
+    spacing: 9px;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    preferred-width: 0px;
+    Text { text: root.label; color: #d5d5d5; font-size: 12px; font-weight: 500; }
+    Input { label: root.label; text <=> root.value; placeholder: root.placeholder; enabled: root.enabled; edited(value) => { root.edited(value); } }
+    if hint != "": Text { text: root.hint; color: #818181; font-size: 11px; wrap: word-wrap; }
+}
+
+export component SectionTitle inherits VerticalLayout {
+    in property <string> title;
+    in property <string> description;
+    spacing: 6px;
+    horizontal-stretch: 1;
+    min-width: 0px;
+    Text { text: root.title; color: #ededed; font-size: 13px; font-weight: 600; }
+    if description != "": Text { text: root.description; color: #818181; font-size: 12px; wrap: word-wrap; }
+}
+
+export component Toggle inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    in property <string> label;
+    callback toggled();
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    background: checked ? #dedede : #252525;
+    border-width: 1px;
+    border-color: checked ? #dedede : #3e3e3e;
+    opacity: enabled ? 1 : 0.4;
+    accessible-role: checkbox;
+    accessible-label: label;
+    accessible-enabled: enabled;
+    accessible-checked: checked;
+    accessible-action-default => { if enabled { root.toggled(); } }
+    Rectangle { x: root.checked ? 17px : 3px; y: 4px; width: 12px; height: 12px; border-radius: 6px; background: root.checked ? #222222 : #888888; animate x { duration: 120ms; } }
+    TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.toggled(); } }
+    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " { root.toggled(); return accept; } return reject; } }
+    forward-focus: focus;
+}
+
+export component Artwork inherits Rectangle {
+    in property <string> theme: "violet";
+    in property <image> artwork;
+    in property <bool> has-artwork: false;
+    border-radius: 11px;
+    clip: true;
+    background: transparent;
+    Image {
+        width: parent.width; height: parent.height;
+        source: root.theme == "mint" ? (root.width <= 48px ? @image-url("artwork/mint-small.svg") : root.width <= 70px ? @image-url("artwork/mint-preview.svg") : @image-url("artwork/mint-large.svg")) :
+            root.theme == "peach" ? (root.width <= 48px ? @image-url("artwork/peach-small.svg") : root.width <= 70px ? @image-url("artwork/peach-preview.svg") : @image-url("artwork/peach-large.svg")) :
+            root.theme == "blue" ? (root.width <= 48px ? @image-url("artwork/blue-small.svg") : root.width <= 70px ? @image-url("artwork/blue-preview.svg") : @image-url("artwork/blue-large.svg")) :
+            (root.width <= 48px ? @image-url("artwork/violet-small.svg") : root.width <= 70px ? @image-url("artwork/violet-preview.svg") : @image-url("artwork/violet-large.svg"));
+    }
+    if has-artwork: Image { width: parent.width; height: parent.height; source: root.artwork; image-fit: cover; }
+}
+
+export component Note inherits Rectangle {
+    in property <string> text;
+    in property <string> icon: "help";
+    min-height: note-content.preferred-height;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #262626;
+    background: #101010;
+    note-content := HorizontalLayout { cross-axis-alignment: center;
+        padding: 13px;
+        spacing: 10px;
+        Glyph { name: root.icon; width: 16px; height: 16px; }
+        Text { text: root.text; color: #939393; font-size: 11px; wrap: word-wrap; }
+    }
+}
+
+export component Divider inherits Rectangle { height: 1px; background: #242424; }
+
+export component Choice inherits Rectangle {
+    in property <[string]> options;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in-out property <int> current-index;
+    private property <bool> popup-open: false;
+    callback selected(int);
+    height: 42px;
+    horizontal-stretch: 1;
+    background: #050505;
+    border-width: 1px;
+    border-color: choice-touch.has-hover ? #555555 : #262626;
+    border-radius: 8px;
+    accessible-role: combobox;
+    accessible-label: label;
+    accessible-enabled: enabled;
+    accessible-value: root.current-index >= 0 && root.current-index < root.options.length ? root.options[root.current-index] : "";
+    accessible-expandable: true;
+    accessible-expanded: root.popup-open;
+    accessible-action-expand => { if root.enabled { menu.show(); } }
+    Text { x: 13px; width: parent.width - 44px; height: parent.height; text: root.current-index >= 0 && root.current-index < root.options.length ? root.options[root.current-index] : "Choose a presence"; color: #eeeeee; font-size: 13px; vertical-alignment: center; overflow: elide; }
+    Glyph { name: "down"; x: parent.width - 29px; y: 14px; width: 14px; height: 14px; }
+    choice-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { menu.show(); } }
+    menu := PopupWindow {
+        x: 0px; y: root.height + 4px;
+        width: root.width;
+        height: min(300px, root.options.length * 36px + 12px);
+        forward-focus: popup-focus;
+        popup-focus := FocusScope {
+            focus-changed-event => { root.popup-open = self.has-focus; }
+            key-pressed(event) => {
+                if event.text == Key.Escape { menu.close(); focus.focus(); return accept; }
+                if event.text == Key.Return || event.text == Key.Space { root.selected(root.current-index); menu.close(); focus.focus(); return accept; }
+                if event.text == Key.DownArrow && root.options.length > 0 { root.current-index = min(root.options.length - 1, root.current-index + 1); root.selected(root.current-index); return accept; }
+                if event.text == Key.UpArrow && root.options.length > 0 { root.current-index = max(0, root.current-index - 1); root.selected(root.current-index); return accept; }
+                return reject;
+            }
+        Rectangle {
+            background: #151515; border-radius: 8px; border-width: 1px; border-color: #444444;
+            option-scroll := ScrollView {
+                horizontal-scrollbar-policy: always-off;
+                content-width: self.visible-width;
+                content-height: root.options.length * 36px + 12px;
+                content-y: -max(0px, min(root.current-index * 36px - 126px, self.content-height - self.visible-height));
+            VerticalLayout {
+                width: option-scroll.visible-width;
+                height: root.options.length * 36px + 12px;
+                padding: 6px;
+                for option[index] in root.options: Rectangle {
+                    height: 36px; border-radius: 5px; background: item-touch.has-hover || root.current-index == index ? #2a2a2a : transparent;
+                    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: option; color: #eeeeee; font-size: 13px; vertical-alignment: center; overflow: elide; }
+                    item-touch := TouchArea { mouse-cursor: pointer; clicked => { root.current-index = index; root.selected(index); menu.close(); } }
+                }
+            }
+            }
+        }
+        }
+    }
+    focus := FocusScope {
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return { menu.show(); return accept; }
+            if event.text == Key.DownArrow && root.options.length > 0 { root.current-index = min(root.options.length - 1, root.current-index + 1); root.selected(root.current-index); return accept; }
+            if event.text == Key.UpArrow && root.options.length > 0 { root.current-index = max(0, root.current-index - 1); root.selected(root.current-index); return accept; }
+            return reject;
+        }
+    }
+    forward-focus: focus;
+}
