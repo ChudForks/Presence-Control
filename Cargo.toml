@@ -3,6 +3,10 @@ members = ["crates/presence-core", "crates/presence-desktop"]
 default-members = ["crates/presence-desktop"]
 resolver = "2"
 
+[patch.crates-io]
+# Keep the native renderer while fixing text rasterization for the entire UI.
+i-slint-renderer-software = { path = "vendor/i-slint-renderer-software" }
+
 [profile.release]
 codegen-units = 1
 lto = "thin"

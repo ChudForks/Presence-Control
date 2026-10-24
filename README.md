@@ -22,11 +22,11 @@ cargo build --release -p presence-desktop
 
 The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in `C:/Users/Jonathan/AppData/Local/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
 
-A built portable copy with the global application ID and single-click input fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
+A built portable copy with the global application ID, single-click input, row-divider, and typography fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
 
 The build embeds the application icon. Closing the window saves recorded time and disconnects Discord; there is no background tray mode.
 
-The UI uses Slint's native Winit window backend and software renderer. Application detection uses Windows APIs directly, and Discord transport uses Rust/Tokio named pipes.
+The UI uses Slint's native Winit window backend and software renderer. A [pinned renderer patch](vendor/i-slint-renderer-software/LOCAL_CHANGES.md) enables Windows font hinting and display-contrast correction for text throughout the app, including inputs and small helper text. Font weights follow the earlier studio's typography. Application detection uses Windows APIs directly, and Discord transport uses Rust/Tokio named pipes.
 
 ## Use
 
@@ -87,7 +87,9 @@ docs/migration.md           Source provenance and behavior inventory
 
 ```powershell
 cargo test --workspace
+cargo test -p i-slint-renderer-software --lib
 cargo clippy --workspace --all-targets -- -D warnings
+cargo clippy -p i-slint-renderer-software --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo run -p presence-desktop -- --smoke-test
 ```

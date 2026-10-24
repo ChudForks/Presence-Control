@@ -9,6 +9,18 @@ export global Colors {
     out property <color> muted: #818181;
 }
 
+// Match the preceding studio's typography. Sharpness and contrast are handled
+// once in the renderer, for Text and TextInput on every page.
+export global Typography {
+    out property <int> body-weight: 400;
+    out property <int> label-weight: 500;
+    out property <int> title-weight: 600;
+    out property <int> heading-weight: 550;
+    out property <int> brand-weight: 650;
+    out property <int> selected-nav-weight: 500;
+    out property <int> caption-weight: 600;
+}
+
 export component Glyph inherits Image {
     in property <string> name;
     width: 18px;
@@ -69,7 +81,7 @@ export component UiButton inherits Rectangle {
         padding-left: 0px;
         padding-right: 0px;
         if icon != "": Glyph { name: root.icon; colorize: root.primary ? #151515 : #a3a3a3; width: 15px; height: 15px; }
-        Text { text: root.text; color: root.primary ? #151515 : #d5d5d5; font-size: root.compact ? 11px : 12px; font-weight: 600; vertical-alignment: center; }
+        Text { text: root.text; color: root.primary ? #151515 : #d5d5d5; font-size: root.compact ? 11px : 12px; font-weight: Typography.title-weight; vertical-alignment: center; }
     }
     touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
     focus := FocusScope { enabled: root.enabled; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; } return reject; } }
@@ -148,7 +160,7 @@ export component Field inherits VerticalLayout {
     horizontal-stretch: 1;
     min-width: 0px;
     preferred-width: 0px;
-    Text { text: root.label; color: #d5d5d5; font-size: 12px; font-weight: 500; }
+    Text { text: root.label; color: #d5d5d5; font-size: 12px; font-weight: Typography.label-weight; }
     Input { label: root.label; text <=> root.value; placeholder: root.placeholder; enabled: root.enabled; edited(value) => { root.edited(value); } }
     if hint != "": Text { text: root.hint; color: #818181; font-size: 11px; wrap: word-wrap; }
 }
@@ -159,7 +171,7 @@ export component SectionTitle inherits VerticalLayout {
     spacing: 6px;
     horizontal-stretch: 1;
     min-width: 0px;
-    Text { text: root.title; color: #ededed; font-size: 13px; font-weight: 600; }
+    Text { text: root.title; color: #ededed; font-size: 13px; font-weight: Typography.title-weight; }
     if description != "": Text { text: root.description; color: #818181; font-size: 12px; wrap: word-wrap; }
 }
 
