@@ -22,7 +22,7 @@ cargo build --release -p presence-desktop
 
 The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in `C:/Users/Jonathan/AppData/Local/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
 
-A built portable copy with the global application ID, single-click input, row-divider, and typography fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
+A built portable copy with the latest UI and connection fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
 
 The build embeds the application icon. Closing the window saves recorded time and disconnects Discord; there is no background tray mode.
 
@@ -41,7 +41,11 @@ Settings marks unsaved application ID edits. **Go live** also saves a pending gl
 
 Profiles support Playing, Listening to, Watching, and Competing in activity types, elapsed timers, manually configured playback durations, artwork asset keys or HTTPS image URLs, and up to two HTTP/HTTPS buttons. Media playback is not read or controlled.
 
+HTTPS artwork appears in saved presence cards as well as the editor and Discord-style preview. Images use rounded corners; the small overlay badge is circular. Status notifications dismiss automatically after five seconds, and the close button dismisses them immediately. Each new notification starts a fresh timer.
+
 Application rules match exact process names without regard to case, with an optional `.exe` suffix and optional window-title filter. The first enabled matching rule wins. Automatic presence checks run every 15 seconds; manual presence takes priority. Stopping presence also disables automatic mode.
+
+In **App integrations**, drag an application's six-dot handle to change its priority. The highlighted line shows where it will go, and the order saves when you drop it. You can also focus a handle and use the Up/Down arrow keys. The top application has the highest priority.
 
 Templates in display names, details, states, and artwork hover text support `{{app}}`, `{{title}}`, and `{{process}}`. Application names prefer the executable's ProductName version resource, with the executable's filename as a fallback.
 
@@ -94,7 +98,7 @@ cargo fmt --all -- --check
 cargo run -p presence-desktop -- --smoke-test
 ```
 
-The workspace test suite currently passes 72 tests, including first-click pointer input and keyboard focus, the native Windows scan, Rust editor transitions, global application ID activation, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, and bounded artwork pixels. See [verification details](docs/verification.md) for the latest native smoke results, verified scope, and remaining checks.
+The workspace test suite currently passes 77 tests, including pointer input, drag-and-drop priority and keyboard controls, the native Windows scan, Rust editor transitions, global application ID activation, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, rounded artwork and card loading, and notification timing. See [verification details](docs/verification.md) for the latest native smoke results, verified scope, and remaining checks.
 
 The optional native smoke run opens the actual Slint window and exercises the Rust callback/backend path, then checks persisted data after reopening the backend. It always creates an isolated workspace beneath `artifacts/native-smoke/<run-id>/` and writes a JSON report and screenshots there. Normal application data is not used.
 

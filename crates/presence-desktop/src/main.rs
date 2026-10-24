@@ -6,6 +6,8 @@ mod native;
 mod pointer_tests;
 mod smoke;
 #[cfg(test)]
+mod ui_tests;
+#[cfg(test)]
 mod worker_tests;
 
 use editor::Editor;
@@ -51,17 +53,13 @@ enum Update {
     },
     Finished(Result<String, String>),
     Shutdown(Result<(), String>),
-    Artwork(bool, String, Result<artwork::Pixels, String>),
+    Artwork(String, Result<artwork::ArtworkPixels, String>),
 }
 #[derive(Clone)]
 enum Pending {
     Select(String),
     Close,
     Import,
-}
-struct ArtworkRequest {
-    url: String,
-    task: tokio::task::JoinHandle<()>,
 }
 struct Host {
     editor: Editor,
@@ -73,11 +71,41 @@ struct Host {
     rule: Option<AppRule>,
     resume_after_save: bool,
     shutting_down: bool,
-    artwork: HashMap<String, slint::Image>,
-    artwork_requests: HashMap<bool, ArtworkRequest>,
+    artwork: HashMap<String, artwork::ArtworkImages>,
+    artwork_requests: HashMap<String, tokio::task::JoinHandle<()>>,
     artwork_retry_after: HashMap<String, std::time::Instant>,
-    large_uri: String,
-    small_uri: String,
+    notification_timer: slint::Timer,
+}
+
+struct RuleDrag(SharedString);
+
+fn rule_drag_data(id: SharedString) -> slint::DataTransfer {
+    let mut data = slint::DataTransfer::default();
+    data.set_user_data(Rc::new(RuleDrag(id)));
+    data
+}
+
+fn rule_drag_id(data: slint::DataTransfer) -> SharedString {
+    data.user_data()
+        .and_then(|value| value.downcast_ref::<RuleDrag>().map(|drag| drag.0.clone()))
+        .unwrap_or_default()
+}
+
+fn notify(ui: &MainWindow, timer: &slint::Timer, message: impl Into<SharedString>) {
+    timer.stop();
+    ui.set_message(message.into());
+    if !ui.get_message().is_empty() {
+        let weak = ui.as_weak();
+        timer.start(
+            slint::TimerMode::SingleShot,
+            Duration::from_secs(5),
+            move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_message("".into());
+                }
+            },
+        );
+    }
 }
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -164,13 +192,25 @@ fn rule_form(rule: &AppRule, config: &Config) -> RuleForm {
     }
 }
 impl Host {
+    fn reorder_rule(&self, ui: &MainWindow, id: &str, target_id: &str, after: bool) {
+        if ui.get_busy() || !ui.get_modal().is_empty() {
+            return;
+        }
+        match self.editor.candidate_rule_drop(id, target_id, after) {
+            Ok(config) if config != self.editor.config => {
+                self.save(ui, config, None, false, "Application priority updated.")
+            }
+            Ok(_) => {}
+            Err(error) => self.error(ui, error),
+        }
+    }
     fn error(&self, ui: &MainWindow, error: impl Into<String>) {
-        ui.set_message(error.into().into());
+        notify(ui, &self.notification_timer, error.into());
     }
     fn send(&self, ui: &MainWindow, command: Command) {
         if self.sender.send(command).is_ok() {
             ui.set_busy(true);
-            ui.set_message("".into());
+            notify(ui, &self.notification_timer, "");
         } else {
             self.error(
                 ui,
@@ -201,6 +241,7 @@ impl Host {
     }
     fn refresh(&mut self, ui: &MainWindow) {
         ui.set_global_id(self.editor.config.application_id.clone().into());
+        self.refresh_artwork(ui);
         let query = ui.get_search().to_lowercase();
         ui.set_profiles(sync_model(
             ui.get_profiles(),
@@ -216,6 +257,12 @@ impl Host {
                         .into(),
                     theme: p.theme.clone().into(),
                     selected: p.id == self.editor.selected_id(),
+                    artwork: self
+                        .artwork
+                        .get(&p.large_image)
+                        .map(|images| images.card.clone())
+                        .unwrap_or_default(),
+                    has_artwork: self.artwork.contains_key(&p.large_image),
                 })
                 .collect(),
         ));
@@ -352,101 +399,81 @@ impl Host {
                 _ => ui.set_archived(sync_model(ui.get_archived(), rows)),
             }
         }
-        self.refresh_artwork(ui);
     }
     fn refresh_artwork(&mut self, ui: &MainWindow) {
+        let query = ui.get_search().to_lowercase();
+        let mut wanted = vec![
+            self.editor.draft.large_image.clone(),
+            self.editor.draft.small_image.clone(),
+        ];
+        for profile in &self.editor.config.profiles {
+            if profile.name.to_lowercase().contains(&query)
+                && !wanted.contains(&profile.large_image)
+            {
+                wanted.push(profile.large_image.clone());
+            }
+        }
+        // A workspace has at most 100 profiles. Keep only images used by its
+        // visible cards or the draft, and limit concurrent network/decoder work.
+        self.artwork.retain(|url, _| wanted.contains(url));
         let now = std::time::Instant::now();
         self.artwork_retry_after
-            .retain(|_, deadline| *deadline > now);
-        self.artwork_requests
-            .retain(|_, request| !request.task.is_finished());
-        for (url, is_large) in [
-            (self.editor.draft.large_image.clone(), true),
-            (self.editor.draft.small_image.clone(), false),
-        ] {
-            let previous = if is_large {
-                &mut self.large_uri
-            } else {
-                &mut self.small_uri
-            };
-            if *previous != url {
-                *previous = url.clone();
-                if let Some(previous) = self.artwork_requests.remove(&is_large) {
-                    previous.task.abort();
-                }
-                let cached = self.artwork.get(&url).cloned();
-                let loaded = cached.is_some();
-                let image = cached.unwrap_or_default();
-                if is_large {
-                    ui.set_preview_large(image);
-                    ui.set_has_preview_large(loaded);
-                } else {
-                    ui.set_preview_small(image);
-                    ui.set_has_preview_small(loaded);
-                }
+            .retain(|url, deadline| *deadline > now && wanted.contains(url));
+        self.artwork_requests.retain(|url, task| {
+            if !wanted.contains(url) {
+                task.abort();
+                return false;
+            }
+            // Keep finished requests until their queued result is received, so
+            // a refresh between completion and delivery cannot start a duplicate.
+            true
+        });
+        let large = self.artwork.get(&self.editor.draft.large_image);
+        ui.set_preview_large(
+            large
+                .map(|images| images.preview.clone())
+                .unwrap_or_default(),
+        );
+        ui.set_editor_artwork(
+            large
+                .map(|images| images.editor.clone())
+                .unwrap_or_default(),
+        );
+        ui.set_has_preview_large(large.is_some());
+        let small = self.artwork.get(&self.editor.draft.small_image);
+        ui.set_preview_small(small.map(|images| images.badge.clone()).unwrap_or_default());
+        ui.set_has_preview_small(small.is_some());
+
+        for url in wanted {
+            if self.artwork_requests.len() >= 4 {
+                break;
             }
             if !url.starts_with("https://")
                 || self.artwork.contains_key(&url)
                 || self.artwork_retry_after.contains_key(&url)
-                || self
-                    .artwork_requests
-                    .get(&is_large)
-                    .is_some_and(|request| request.url == url)
+                || self.artwork_requests.contains_key(&url)
             {
                 continue;
             }
             let tx = self.updates.clone();
             let requested_url = url.clone();
             let task = self.executor.spawn(async move {
-                // Wait for typing to settle. Changing the field aborts this
-                // slot's task, including an HTTP request already in progress.
+                // Wait for typing to settle. Unused URLs are aborted above;
+                // cards and previews sharing a URL use one request and cache.
                 tokio::time::sleep(Duration::from_millis(350)).await;
                 let result = artwork::fetch(&requested_url).await;
-                let _ = tx.send(Update::Artwork(is_large, requested_url, result));
+                let _ = tx.send(Update::Artwork(requested_url, result));
             });
-            self.artwork_requests
-                .insert(is_large, ArtworkRequest { url, task });
+            self.artwork_requests.insert(url, task);
         }
     }
 
-    fn receive_artwork(
-        &mut self,
-        ui: &MainWindow,
-        _is_large: bool,
-        url: String,
-        result: Result<artwork::Pixels, String>,
-    ) {
+    fn receive_artwork(&mut self, url: String, result: Result<artwork::ArtworkPixels, String>) {
+        self.artwork_requests.remove(&url);
         match result {
             Ok(pixels) => {
                 self.artwork_retry_after.remove(&url);
-                let buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::clone_from_slice(
-                    &pixels.rgba,
-                    pixels.width,
-                    pixels.height,
-                );
-                let image = slint::Image::from_rgba8(buffer);
-                if url == self.large_uri {
-                    ui.set_preview_large(image.clone());
-                    ui.set_has_preview_large(true);
-                }
-                if url == self.small_uri {
-                    ui.set_preview_small(image.clone());
-                    ui.set_has_preview_small(true);
-                }
-                // Keep the currently displayed images when evicting a cached
-                // image. Completed requests are removed by refresh_artwork,
-                // so returning to an evicted URL can fetch it again.
-                if self.artwork.len() >= 32 && !self.artwork.contains_key(&url) {
-                    let candidate = self
-                        .artwork
-                        .keys()
-                        .find(|key| *key != &self.large_uri && *key != &self.small_uri)
-                        .cloned();
-                    if let Some(candidate) = candidate {
-                        self.artwork.remove(&candidate);
-                    }
-                }
-                self.artwork.insert(url, image);
+                self.artwork.insert(url, pixels.into());
             }
             Err(_) => {
                 // A failed URL can be retried later instead of remaining in a
@@ -496,7 +523,7 @@ impl Host {
             match action {
                 "search" => ui.set_search(argument.into()),
                 "edit-global-id" => ui.set_global_id_draft(argument.into()),
-                "dismiss-message" => ui.set_message("".into()),
+                "dismiss-message" => notify(ui, &self.notification_timer, ""),
                 "select-profile" => {
                     if argument != self.editor.draft.id {
                         self.request_pending(ui, Pending::Select(argument.into()));
@@ -811,12 +838,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (sender, commands) = unbounded_channel();
     executor.spawn(worker(backend.clone(), commands, updates.clone()));
     let ui = MainWindow::new()?;
+    ui.on_rule_drag_data(rule_drag_data);
+    ui.on_rule_drag_id(rule_drag_id);
     if smoke_root.is_none() {
         native::place_initial_window(ui.window());
     }
     ui.set_global_id_draft(config.application_id.clone().into());
     ui.set_data_path(root.display().to_string().into());
-    ui.set_message(warnings.join("\n").into());
     let host = Rc::new(RefCell::new(Host {
         editor: Editor::new(config),
         runtime,
@@ -830,9 +858,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         artwork: HashMap::new(),
         artwork_requests: HashMap::new(),
         artwork_retry_after: HashMap::new(),
-        large_uri: String::new(),
-        small_uri: String::new(),
+        notification_timer: slint::Timer::default(),
     }));
+    notify(&ui, &host.borrow().notification_timer, warnings.join("\n"));
     host.borrow().refresh_form(&ui);
     host.borrow_mut().refresh(&ui);
     let weak = ui.as_weak();
@@ -840,6 +868,13 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     ui.on_action(move |action, argument| {
         if let Some(ui) = weak.upgrade() {
             handler.borrow_mut().action(&ui, &action, &argument);
+        }
+    });
+    let weak = ui.as_weak();
+    let handler = host.clone();
+    ui.on_rule_reordered(move |id, target_id, after| {
+        if let Some(ui) = weak.upgrade() {
+            handler.borrow().reorder_rule(&ui, &id, &target_id, after);
         }
     });
     let weak = ui.as_weak();
@@ -925,7 +960,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     ui.set_scanning(false);
                     match result {
                         Ok(message) => {
-                            if !message.is_empty() { ui.set_message(message.into()); }
+                            if !message.is_empty() { notify(&ui, &host.notification_timer, message); }
                             if host.resume_after_save {
                                 host.resume_after_save = false;
                                 host.continue_pending(&ui);
@@ -936,7 +971,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     changed = true;
                 }
                 Update::Shutdown(result) => { if let Err(error) = result { host.shutting_down = false; ui.set_busy(false); host.error(&ui, format!("Could not save application time: {error}. Close again to retry.")); } else { let _ = slint::quit_event_loop(); } }
-                Update::Artwork(is_large, url, result) => { host.receive_artwork(&ui, is_large, url, result); changed = true; }
+                Update::Artwork(url, result) => { host.receive_artwork(url, result); changed = true; }
             }
         } let second = now_ms() / 1000; if changed || second != last_second { last_second = second; host.refresh(&ui); }
     });

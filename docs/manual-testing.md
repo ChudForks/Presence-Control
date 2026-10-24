@@ -25,6 +25,8 @@ The automated checks already cover 69 Rust tests and 52 native callback/workflow
 - Test Playing, Listening to, Watching, and Competing in. Preview text should update while typing.
 - Test `{{app}}`, `{{title}}`, and `{{process}}`. Preview uses example metadata until that presence is active with detected metadata.
 - Test large/small HTTPS artwork, application asset keys, hover text, and all four fallback themes. Asset keys use theme artwork in the local preview; Discord resolves the actual application asset.
+- Check rounded corners on uploaded images in the editor, live preview, and saved presence cards. The small preview badge should be circular. Check non-square images, changing an image URL, and cards for unselected presences; unsaved artwork should only affect the editor/preview until saved.
+- Trigger a status notification such as Stop and leave it open: it should disappear after five seconds. Trigger another notice before that interval ends and check that it gets five seconds of its own; the close button should still dismiss immediately.
 - Add two buttons, edit their labels/URLs, and remove each. A third button should be unavailable; invalid URLs should produce an actionable save error.
 - Toggle elapsed time. For Listening/Watching, enable progress and enter a duration such as `3:30`. Invalid durations should be rejected. The app does not read or control a media player.
 
@@ -41,7 +43,8 @@ The automated checks already cover 69 Rust tests and 52 native callback/workflow
 ## 5. Applications and automatic switching
 
 - Scan applications. Confirm process names, titles, and Unicode display correctly; add a detected application to a rule.
-- Create two matching rules, change their priority with the arrows, and enable/disable them. The first enabled matching rule should win.
+- Check Applications with no rules and Open applications before scanning: both empty messages should have comfortable padding and stay inside their cards when the window is narrow.
+- Create several matching rules and drag their six-dot handles above/below other applications. Check the insertion line, drop outside the list to cancel, and restart to verify the saved order. The first enabled matching rule should win. Focus a handle and check the Up/Down keys, then verify Edit and enable/disable still work.
 - Test an optional title filter and process names with/without `.exe`, ignoring case.
 - Enable automatic mode and allow up to 15 seconds for checks. Change titles, close applications, and switch matches.
 - Go live manually while automatic mode is enabled: manual presence should take priority. Stop disables automatic mode; enable it again to resume matching.

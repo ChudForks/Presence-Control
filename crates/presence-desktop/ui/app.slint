@@ -1,7 +1,7 @@
 import { ScrollView, Palette } from "std-widgets.slint";
-import { Typography, Glyph, UiButton, IconButton, Input, Field, SectionTitle, Toggle, Artwork, Note, Divider, Choice } from "components.slint";
+import { Typography, Glyph, UiButton, IconButton, Input, Field, SectionTitle, Toggle, Artwork, Note, Divider, Choice, EmptyState, PriorityHandle } from "components.slint";
 
-export struct ProfileRow { id: string, title: string, subtitle: string, theme: string, selected: bool }
+export struct ProfileRow { id: string, title: string, subtitle: string, theme: string, selected: bool, artwork: image, has-artwork: bool }
 export struct RuleRow { id: string, name: string, process: string, profile: string, enabled: bool }
 export struct AppRow { id: string, process: string, title: string }
 export struct ActivityRow { id: string, kind: string, title: string, subtitle: string, time: string, detail: string, locked: bool }
@@ -126,11 +126,11 @@ component Preview inherits VerticalLayout {
     Rectangle {
         height: profile-content.preferred-height + 188px; vertical-stretch: 0;
         background: #111111; border-width: 1px; border-color: #333333; border-radius: 13px;
-        Rectangle {
-            x: 1px; y: 1px; width: parent.width - 2px; height: 100px; border-top-left-radius: 12px; border-top-right-radius: 12px; clip: true;
-            background: root.form.theme == "mint" ? @linear-gradient(110deg, #324f44, #18241e) : root.form.theme == "peach" ? @linear-gradient(110deg, #755a4b, #302320) : root.form.theme == "blue" ? @linear-gradient(110deg, #344b65, #1b2530) : @linear-gradient(110deg, #514363, #261f2f);
-            Rectangle { x: parent.width * 0.35; y: -130px; width: 230px; height: 220px; border-radius: 120px; background: transparent; border-width: 1px; border-color: #ffffff20;  }
-            Rectangle { x: parent.width * 0.25; y: 15px; width: 320px; height: 140px; border-radius: 100px; background: transparent; border-width: 1px; border-color: #ffffff14;  }
+        Image {
+            x: 1px; y: 1px; width: parent.width - 2px; height: 100px; image-fit: fill;
+            // Rounded gradients and clips are baked into the SVG because the
+            // native software renderer paints gradient Rectangle corners square.
+            source: root.form.theme == "mint" ? @image-url("artwork/mint-banner.svg") : root.form.theme == "peach" ? @image-url("artwork/peach-banner.svg") : root.form.theme == "blue" ? @image-url("artwork/blue-banner.svg") : @image-url("artwork/violet-banner.svg");
         }
         Rectangle {
             x: 19px; y: 65px; width: 70px; height: 70px; border-radius: 35px; background: #c8c8c8; border-width: 6px; border-color: #111111;
@@ -242,12 +242,16 @@ export component MainWindow inherits Window {
     in property <string> message;
     in property <string> data-path;
     in property <image> preview-large;
+    in property <image> editor-artwork;
     in property <image> preview-small;
     in property <bool> has-preview-large;
     in property <bool> has-preview-small;
     callback action(string,string);
     callback field-edited(string,string);
     callback rule-edited(string,string);
+    pure callback rule-drag-data(string) -> data-transfer;
+    pure callback rule-drag-id(data-transfer) -> string;
+    callback rule-reordered(string,string,bool);
     private property <bool> compact-nav: root.width < 1040px;
     private property <length> sidebar-width: compact-nav ? 72px : 224px;
     private property <string> page-title: page == 0 ? "Presence studio" : page == 1 ? "App integrations" : page == 2 ? "Activity log" : page == 3 ? "Archive" : "Settings";
@@ -324,13 +328,13 @@ export component MainWindow inherits Window {
                         HorizontalLayout { cross-axis-alignment: center;
                             spacing: 12px;
                             for profile in root.profiles: Rectangle {
-                                min-width: 218px; height: 80px; background: profile.selected ? @linear-gradient(115deg, #191919, #0e0e0e) : #0a0a0a;
+                                min-width: 218px; height: 80px; background: profile.selected ? #141414 : #0a0a0a;
                                 border-width: 1px; border-color: profile.selected ? #717171 : #262626; border-radius: 11px;
                                 accessible-role: button; accessible-label: profile.title; accessible-enabled: root.modal == "";
                                 accessible-action-default => { if root.modal == "" { root.action("select-profile", profile.id); } }
                                 HorizontalLayout { cross-axis-alignment: center;
                                     padding-left: 16px; padding-right: 16px; spacing: 14px;
-                                    Artwork { width: 42px; height: 42px; theme: profile.theme; }
+                                    Artwork { width: 42px; height: 42px; theme: profile.theme; artwork: profile.artwork; has-artwork: profile.has-artwork; }
                                     VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: profile.title; color: #eeeeee; font-size: 13px; font-weight: Typography.title-weight; overflow: elide; } Text { text: profile.subtitle; color: #818181; font-size: 11px; overflow: elide; } }
                                     Text { width: 16px; text: profile.selected ? "✓" : "›"; color: profile.selected ? #dddddd : #777777; font-size: 17px; vertical-alignment: center; }
                                 }
@@ -421,7 +425,7 @@ export component MainWindow inherits Window {
                                     SectionTitle { title: "Make an impression"; description: "Give your presence a little personality."; }
                                     HorizontalLayout { cross-axis-alignment: center;
                                         spacing: 20px;
-                                        Artwork { width: 88px; height: 88px; theme: root.form.theme; artwork: root.preview-large; has-artwork: root.has-preview-large; }
+                                        Artwork { width: 88px; height: 88px; theme: root.form.theme; artwork: root.editor-artwork; has-artwork: root.has-preview-large; }
                                         VerticalLayout {
                                             spacing: 12px;
                                             Text { text: "Preview theme"; color: #d2d2d2; font-size: 13px; font-weight: Typography.label-weight; }
@@ -499,14 +503,17 @@ export component MainWindow inherits Window {
                     min-height: rules-layout.preferred-height; background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
                     rules-layout := VerticalLayout {
                         spacing: 0px;
-                        VerticalLayout { padding: 24px; spacing: 10px; Text { text: "Applications    " + root.rules.length; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; } Text { text: "Use the arrows to change priority. If multiple applications match, the highest enabled rule wins."; color: #818181; font-size: 12px; wrap: word-wrap; } }
-                        if root.rules.length == 0: Text { text: "No applications yet. Add an application or scan your open windows to get started."; color: #818181; font-size: 12px; wrap: word-wrap; min-height: 80px; }
-                        for rule[index] in root.rules: Rectangle {
+                        VerticalLayout { padding: 24px; spacing: 10px; Text { text: "Applications    " + root.rules.length; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; } Text { text: "Drag the handles to set priority. The first enabled matching application wins."; color: #818181; font-size: 12px; wrap: word-wrap; } }
+                        if root.rules.length == 0: EmptyState { title: "No applications yet"; description: "Add an application or scan your open windows to get started."; }
+                        for rule[index] in root.rules: rule-row := Rectangle {
+                            private property <bool> drop-after: false;
                             height: 82px;
+                            opacity: handle.dragging ? 0.45 : 1;
+                            background: drop.has-drag ? #161616 : transparent;
                             Divider { y: 0px; width: parent.width; background: #1b1b1b; }
                             HorizontalLayout { cross-axis-alignment: center;
                                 padding-left: 20px; padding-right: 20px; spacing: 12px;
-                                VerticalLayout { spacing: 0px; IconButton { icon: "up"; label: "Move rule up"; enabled: index > 0 && !root.busy; height: 28px; clicked => { root.action("rule-up", rule.id); } } IconButton { icon: "down"; label: "Move rule down"; enabled: index + 1 < root.rules.length && !root.busy; height: 28px; clicked => { root.action("rule-down", rule.id); } } }
+                                handle := PriorityHandle { data: root.rule-drag-data(rule.id); label: "Change priority for " + rule.name; enabled: root.rules.length > 1 && root.modal == "" && !root.busy; move-up => { if index > 0 { root.action("rule-up", rule.id); } } move-down => { if index + 1 < root.rules.length { root.action("rule-down", rule.id); } } }
                                 Text { text: index + 1; color: #818181; font-size: 10px; vertical-alignment: center; }
                                 Rectangle { width: 38px; height: 38px; border-width: 1px; border-color: #333333; border-radius: 10px; background: #161616; Glyph { name: "code"; x: 10px; y: 10px; } }
                                 VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: rule.name; color: #d5d5d5; font-size: 13px; font-weight: Typography.title-weight; overflow: elide; } Text { text: rule.process; color: #818181; font-size: 11px; overflow: elide; } }
@@ -515,6 +522,19 @@ export component MainWindow inherits Window {
                                 UiButton { text: "Edit"; compact: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("edit-rule", rule.id); } }
                                 IconButton { icon: "trash"; label: "Delete application"; enabled: root.modal == "" && !root.busy; clicked => { root.action("delete-rule", rule.id); } }
                             }
+                            drop := DropArea {
+                                enabled: root.modal == "" && !root.busy && root.rules.length > 1;
+                                can-drop(event) => {
+                                    rule-row.drop-after = event.position.y >= rule-row.height / 2;
+                                    if root.rule-drag-id(event.data) != "" && root.rule-drag-id(event.data) != rule.id { return DragAction.move; }
+                                    return DragAction.none;
+                                }
+                                dropped(event) => {
+                                    root.rule-reordered(root.rule-drag-id(event.data), rule.id, event.position.y >= rule-row.height / 2);
+                                    return DragAction.move;
+                                }
+                            }
+                            if drop.has-drag: Rectangle { x: 12px; y: rule-row.drop-after ? parent.height - 2px : 0px; width: parent.width - 24px; height: 2px; border-radius: 1px; background: #b8d8c6; }
                         }
                     }
                 }
@@ -523,7 +543,7 @@ export component MainWindow inherits Window {
                     apps-layout := VerticalLayout {
                         spacing: 0px;
                         HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 16px; SectionTitle { title: "Open applications"; description: "Add a process to match a presence. Window titles stay on this device until included in a live presence."; } UiButton { text: root.scanning ? "Scanning…" : "Scan applications"; icon: "refresh"; enabled: root.modal == "" && !root.scanning; clicked => { root.action("scan", ""); } } }
-                        if root.apps.length == 0: Text { text: "Scan applications to find the windows currently open on your computer."; color: #818181; font-size: 12px; min-height: 80px; }
+                        if root.apps.length == 0: EmptyState { icon: "monitor"; title: root.scanning ? "Scanning open applications…" : "No open applications listed"; description: "Scan applications to find the windows currently open on your computer."; }
                         for app in root.apps: Rectangle {
                             height: 76px; Divider { y: 0px; width: parent.width; background: #1b1b1b; }
                             HorizontalLayout { cross-axis-alignment: center; padding-left: 24px; padding-right: 20px; spacing: 14px; Glyph { name: "monitor"; width: 18px; height: 18px; } VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: app.process; color: #d5d5d5; font-size: 12px; font-weight: Typography.title-weight; overflow: elide; } Text { text: app.title; color: #818181; font-size: 11px; overflow: elide; } } UiButton { text: "Add application"; icon: "plus"; compact: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("add-detected", app.id); } } }

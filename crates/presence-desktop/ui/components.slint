@@ -51,6 +51,7 @@ export component Glyph inherits Image {
         name == "close" ? @image-url("icons/close.svg") :
         name == "up" ? @image-url("icons/up.svg") :
         name == "down" ? @image-url("icons/down.svg") :
+        name == "grip" ? @image-url("icons/grip.svg") :
         name == "stop" ? @image-url("icons/stop.svg") :
         @image-url("icons/code.svg");
 }
@@ -202,17 +203,23 @@ export component Artwork inherits Rectangle {
     in property <string> theme: "violet";
     in property <image> artwork;
     in property <bool> has-artwork: false;
-    border-radius: 11px;
-    clip: true;
+    border-radius: root.width <= 24px ? root.width / 2 : root.width <= 48px ? 10px : root.width <= 70px ? 9px : 13px;
     background: transparent;
-    Image {
+    // Downloaded images already contain the correct rounded alpha mask.
+    // clip + border-radius is unsupported by Slint's software renderer.
+    if !has-artwork && root.width > 24px: Image {
         width: parent.width; height: parent.height;
         source: root.theme == "mint" ? (root.width <= 48px ? @image-url("artwork/mint-small.svg") : root.width <= 70px ? @image-url("artwork/mint-preview.svg") : @image-url("artwork/mint-large.svg")) :
             root.theme == "peach" ? (root.width <= 48px ? @image-url("artwork/peach-small.svg") : root.width <= 70px ? @image-url("artwork/peach-preview.svg") : @image-url("artwork/peach-large.svg")) :
             root.theme == "blue" ? (root.width <= 48px ? @image-url("artwork/blue-small.svg") : root.width <= 70px ? @image-url("artwork/blue-preview.svg") : @image-url("artwork/blue-large.svg")) :
             (root.width <= 48px ? @image-url("artwork/violet-small.svg") : root.width <= 70px ? @image-url("artwork/violet-preview.svg") : @image-url("artwork/violet-large.svg"));
     }
+    if !has-artwork && root.width <= 24px: Rectangle {
+        border-radius: parent.width / 2; background: #425e53;
+        Glyph { name: "wand"; x: 4px; y: 4px; width: parent.width - 8px; height: parent.height - 8px; colorize: #def3e6; }
+    }
     if has-artwork: Image { width: parent.width; height: parent.height; source: root.artwork; image-fit: cover; }
+    Rectangle { width: parent.width; height: parent.height; border-radius: root.border-radius; border-width: root.width <= 24px ? 0px : 1px; border-color: #ffffff14; background: transparent; }
 }
 
 export component Note inherits Rectangle {
@@ -232,6 +239,61 @@ export component Note inherits Rectangle {
 }
 
 export component Divider inherits Rectangle { height: 1px; background: #242424; }
+
+export component EmptyState inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in property <string> icon: "code";
+    min-height: content.preferred-height;
+    background: transparent;
+    Divider { y: 0px; width: parent.width; background: #1b1b1b; }
+    content := HorizontalLayout {
+        cross-axis-alignment: center; padding: 24px; spacing: 14px;
+        Rectangle {
+            width: 38px; height: 38px; border-radius: 10px; border-width: 1px; border-color: #303030; background: #141414;
+            Glyph { name: root.icon; x: 10px; y: 10px; }
+        }
+        VerticalLayout {
+            min-width: 0px; horizontal-stretch: 1; spacing: 7px;
+            Text { text: root.title; color: #d5d5d5; font-size: 13px; font-weight: Typography.title-weight; wrap: word-wrap; }
+            Text { text: root.description; color: #818181; font-size: 12px; wrap: word-wrap; }
+        }
+    }
+}
+
+export component PriorityHandle inherits Rectangle {
+    in property <data-transfer> data;
+    in property <string> label;
+    in property <bool> enabled: true;
+    out property <bool> dragging: drag.dragging;
+    callback move-up();
+    callback move-down();
+    width: 28px; height: 40px;
+    border-radius: 6px;
+    border-width: focus.has-focus ? 1px : 0px;
+    border-color: #777777;
+    background: focus.has-focus || touch.has-hover ? #202020 : transparent;
+    opacity: enabled ? 1 : 0.35;
+    accessible-role: button;
+    accessible-label: label + ". Drag to reorder, or use the Up and Down arrow keys.";
+    accessible-enabled: enabled;
+    accessible-action-default => { if root.enabled { focus.focus(); } }
+    Glyph { name: "grip"; x: 5px; y: 11px; width: 18px; height: 18px; colorize: root.enabled ? #a3a3a3 : #555555; }
+    drag := DragArea {
+        enabled: root.enabled; data: root.data; allow-move: true;
+        drag-image: @image-url("icons/grip.svg"); drag-image-offset-x: 12; drag-image-offset-y: 12;
+        touch := TouchArea { enabled: root.enabled; mouse-cursor: drag.dragging ? grabbing : grab; clicked => { focus.focus(); } }
+    }
+    focus := FocusScope {
+        enabled: root.enabled; focus-on-click: false;
+        key-pressed(event) => {
+            if event.text == Key.UpArrow { root.move-up(); return accept; }
+            if event.text == Key.DownArrow { root.move-down(); return accept; }
+            return reject;
+        }
+    }
+    forward-focus: focus;
+}
 
 export component Choice inherits Rectangle {
     in property <[string]> options;

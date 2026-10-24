@@ -100,6 +100,9 @@ struct State {
     new_rule: String,
     event_id: String,
     fault_active: bool,
+    notification_started: Option<Instant>,
+    empty_snapshot: Option<(Vec<AppRule>, slint::PhysicalSize)>,
+    empty_snapshots_done: bool,
     outcome: Option<Result<(), String>>,
 }
 
@@ -115,6 +118,9 @@ pub fn schedule(ui: &MainWindow, host: Rc<RefCell<Host>>, root: PathBuf) -> Smok
         new_rule: String::new(),
         event_id: String::new(),
         fault_active: false,
+        notification_started: None,
+        empty_snapshot: None,
+        empty_snapshots_done: false,
         outcome: None,
     }));
     let timer = slint::Timer::default();
@@ -131,7 +137,9 @@ pub fn schedule(ui: &MainWindow, host: Rc<RefCell<Host>>, root: PathBuf) -> Smok
             if state.outcome.is_some() {
                 return;
             }
-            let result = if state.started.elapsed() > Duration::from_secs(60) {
+            // High-DPI software snapshots plus the real notification wait can
+            // exceed a minute on a busy machine.
+            let result = if state.started.elapsed() > Duration::from_secs(90) {
                 Err(format!("Native smoke timed out at step {}.", state.step))
             } else {
                 state.tick(&ui, &host)
@@ -233,6 +241,34 @@ impl State {
 
     fn action(ui: &MainWindow, action: &str, argument: &str) {
         ui.invoke_action(action.into(), argument.into());
+    }
+
+    fn start_rule_drag(ui: &MainWindow, from_y: f32, to_y: f32) {
+        use slint::{
+            platform::{PointerEventButton, WindowEvent},
+            LogicalPosition,
+        };
+        let start = LogicalPosition::new(294.0, from_y);
+        ui.window()
+            .dispatch_event(WindowEvent::PointerMoved { position: start });
+        ui.window().dispatch_event(WindowEvent::PointerPressed {
+            position: start,
+            button: PointerEventButton::Left,
+        });
+        ui.window().dispatch_event(WindowEvent::PointerMoved {
+            position: LogicalPosition::new(304.0, from_y),
+        });
+        ui.window().dispatch_event(WindowEvent::PointerMoved {
+            position: LogicalPosition::new(600.0, to_y),
+        });
+    }
+
+    fn finish_rule_drag(ui: &MainWindow, to_y: f32) {
+        ui.window()
+            .dispatch_event(slint::platform::WindowEvent::PointerReleased {
+                position: slint::LogicalPosition::new(600.0, to_y),
+                button: slint::platform::PointerEventButton::Left,
+            });
     }
 
     fn rule_edit(ui: &MainWindow, field: &str, value: &str) {
@@ -380,6 +416,55 @@ impl State {
             }
             5 => {
                 self.snapshot(ui, "artwork")?;
+                // Render opaque, non-square artwork through the production
+                // pixel/cache/model path without depending on a remote host.
+                let (config, draft) = {
+                    let mut host = host.borrow_mut();
+                    let original = (host.editor.config.clone(), host.editor.draft.clone());
+                    let url = "https://smoke.invalid/rounded-artwork.png";
+                    let selected = host.editor.draft.id.clone();
+                    for profile in &mut host.editor.config.profiles {
+                        if profile.id == selected {
+                            profile.large_image = url.into();
+                        }
+                    }
+                    host.editor.draft.large_image = url.into();
+                    host.editor.draft.small_image = url.into();
+                    let source = image::RgbaImage::from_fn(192, 128, |x, y| {
+                        image::Rgba([230, (80 + y).min(255) as u8, (x / 2) as u8, 255])
+                    });
+                    host.receive_artwork(
+                        url.into(),
+                        Ok(crate::artwork::Pixels {
+                            width: 192,
+                            height: 128,
+                            rgba: source.into_raw(),
+                        }
+                        .rounded()),
+                    );
+                    host.refresh_form(ui);
+                    host.refresh(ui);
+                    original
+                };
+                self.check(
+                    ui.get_has_preview_large() && ui.get_has_preview_small(),
+                    "Native artwork reaches the editor, preview, and badge",
+                )?;
+                self.check(
+                    (0..ui.get_profiles().row_count()).any(|i| {
+                        let row = ui.get_profiles().row_data(i).unwrap();
+                        row.selected && row.has_artwork && row.artwork.size().width == 126
+                    }),
+                    "Saved presence card uses the loaded artwork",
+                )?;
+                self.snapshot(ui, "rounded-artwork")?;
+                {
+                    let mut host = host.borrow_mut();
+                    host.editor.config = config;
+                    host.editor.draft = draft;
+                    host.refresh_form(ui);
+                    host.refresh(ui);
+                }
                 ui.set_editor_tab(2);
             }
             6 => {
@@ -410,11 +495,34 @@ impl State {
                 Self::action(ui, "confirm-delete-profile", "");
             }
             10 => {
+                ui.set_page(1);
+                if !self.empty_snapshots_done {
+                    if let Some((rules, size)) = self.empty_snapshot.take() {
+                        // Wait a native event-loop turn after resizing before
+                        // capturing the narrower layout, then wait again to restore.
+                        self.snapshot(ui, "integrations-empty-narrow")?;
+                        ui.window().set_size(size);
+                        let mut host = host.borrow_mut();
+                        host.editor.config.rules = rules;
+                        host.refresh(ui);
+                        self.empty_snapshots_done = true;
+                    } else {
+                        let rules = {
+                            let mut host = host.borrow_mut();
+                            let saved = std::mem::take(&mut host.editor.config.rules);
+                            host.refresh(ui);
+                            saved
+                        };
+                        self.snapshot(ui, "integrations-empty")?;
+                        self.empty_snapshot = Some((rules, ui.window().size()));
+                        ui.window().set_size(slint::LogicalSize::new(900.0, 800.0));
+                    }
+                    return Ok(());
+                }
                 self.check(
                     self.config()?.profiles.len() == 4,
                     "Confirmed deletion persists",
                 )?;
-                ui.set_page(1);
                 Self::action(ui, "new-rule", "");
                 Self::rule_edit(ui, "name", "Native smoke rule");
                 Self::rule_edit(ui, "process", "presence-smoke-never-running-2.exe");
@@ -438,19 +546,22 @@ impl State {
                     self.config()?.rules[1].profile_id == "deep-work",
                     "Rule profile selector resolves the selected profile",
                 )?;
-                Self::action(ui, "rule-up", &self.new_rule);
+                Self::start_rule_drag(ui, 520.0, 416.0);
+                self.snapshot(ui, "integrations-drag")?;
+                Self::finish_rule_drag(ui, 416.0);
             }
             12 => {
                 self.check(
                     self.config()?.rules[0].id == self.new_rule,
-                    "Move up changes matching priority",
+                    "Dropping before an application persists matching priority",
                 )?;
-                Self::action(ui, "rule-down", &self.new_rule);
+                Self::start_rule_drag(ui, 438.0, 540.0);
+                Self::finish_rule_drag(ui, 540.0);
             }
             13 => {
                 self.check(
                     self.config()?.rules[1].id == self.new_rule,
-                    "Move down changes matching priority",
+                    "Dropping after an application persists matching priority",
                 )?;
                 Self::action(ui, "toggle-rule", &self.new_rule);
             }
@@ -777,6 +888,17 @@ impl State {
                 self.check(
                     runtime.usage_sessions.is_empty() && runtime.usage_totals.is_empty(),
                     "Archived history stays removed from live totals and sessions after restart",
+                )?;
+                crate::notify(ui, &host.borrow().notification_timer, "Presence stopped.");
+                self.notification_started = Some(Instant::now());
+            }
+            41 => {
+                if self.notification_started.unwrap().elapsed() < Duration::from_millis(5300) {
+                    return Ok(());
+                }
+                self.check(
+                    ui.get_message().is_empty(),
+                    "Native status notification dismisses itself after five seconds",
                 )?;
                 self.outcome = Some(Ok(()));
                 self.report();

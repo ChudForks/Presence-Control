@@ -289,6 +289,31 @@ impl Editor {
         validated(next)
     }
 
+    pub fn candidate_rule_drop(
+        &self,
+        id: &str,
+        target_id: &str,
+        after: bool,
+    ) -> Result<Config, String> {
+        let mut next = self.config.clone();
+        let index = next
+            .rules
+            .iter()
+            .position(|rule| rule.id == id)
+            .ok_or("This application rule no longer exists.")?;
+        if id == target_id {
+            return Ok(next);
+        }
+        let rule = next.rules.remove(index);
+        let target = next
+            .rules
+            .iter()
+            .position(|rule| rule.id == target_id)
+            .ok_or("The target application rule no longer exists.")?;
+        next.rules.insert(target + usize::from(after), rule);
+        validated(next)
+    }
+
     pub fn preview(&self, runtime: &RuntimeState, now_ms: i64) -> Preview {
         let example = Metadata {
             app: "Visual Studio Code".into(),
@@ -891,6 +916,49 @@ mod tests {
         assert_eq!(preview.state, "real.exe");
         assert_eq!(preview.playback_position, "3:00");
         assert_eq!(preview.playback_fraction, 1.0);
+    }
+
+    #[test]
+    fn rule_drops_preserve_identity_and_place_before_or_after_the_target() {
+        let mut editor = editor();
+        for process in ["first.exe", "second.exe", "third.exe", "fourth.exe"] {
+            let mut rule = editor.new_rule();
+            rule.process = process.into();
+            rule.extra.insert("custom".into(), json!(process));
+            editor.config.rules.push(rule);
+        }
+        let original = editor.config.clone();
+        let ids: Vec<_> = original.rules.iter().map(|rule| rule.id.as_str()).collect();
+        let down = editor.candidate_rule_drop(ids[0], ids[3], true).unwrap();
+        assert_eq!(
+            down.rules,
+            vec![
+                original.rules[1].clone(),
+                original.rules[2].clone(),
+                original.rules[3].clone(),
+                original.rules[0].clone()
+            ]
+        );
+        let up = editor.candidate_rule_drop(ids[3], ids[0], false).unwrap();
+        assert_eq!(up.rules[0], original.rules[3]);
+        assert_eq!(up.rules[1], original.rules[0]);
+        assert_eq!(
+            editor.candidate_rule_drop(ids[1], ids[2], false).unwrap(),
+            original,
+            "adjacent drop can be a no-op"
+        );
+        assert_eq!(
+            editor.candidate_rule_drop(ids[1], ids[1], true).unwrap(),
+            original
+        );
+        assert!(editor
+            .candidate_rule_drop("missing", ids[0], false)
+            .is_err());
+        assert!(editor.candidate_rule_drop(ids[0], "missing", true).is_err());
+        assert_eq!(
+            editor.config, original,
+            "only a successful save can commit the candidate"
+        );
     }
 
     #[test]

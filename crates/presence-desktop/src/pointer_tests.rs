@@ -189,3 +189,111 @@ fn first_click_activates_controls_and_transfers_keyboard_focus() {
     assert_eq!(ui.get_page(), 0, "dialogs still block background clicks");
     ui.hide().unwrap();
 }
+
+#[test]
+fn priority_handles_drag_to_other_rows_and_leave_row_actions_interactive() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+    slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).unwrap();
+    let ui = MainWindow::new().unwrap();
+    ui.on_rule_drag_data(super::rule_drag_data);
+    ui.on_rule_drag_id(super::rule_drag_id);
+    ui.set_page(1);
+    ui.set_rules(model(
+        (0..3)
+            .map(|i| super::RuleRow {
+                id: format!("rule-{i}").into(),
+                name: format!("Application {i}").into(),
+                process: format!("app-{i}.exe").into(),
+                profile: "My presence".into(),
+                enabled: true,
+            })
+            .collect(),
+    ));
+    let drops = Rc::new(RefCell::new(Vec::new()));
+    let recorded = drops.clone();
+    ui.on_rule_reordered(move |source, target, after| {
+        recorded.borrow_mut().push((source, target, after))
+    });
+    let actions = Rc::new(RefCell::new(Vec::new()));
+    let recorded = actions.clone();
+    ui.on_action(move |action, id| recorded.borrow_mut().push((action, id)));
+    window.set_size(PhysicalSize::new(1470, 1000));
+    ui.show().unwrap();
+    window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+    draw(&window);
+
+    let drag = |from: (f32, f32), to: (f32, f32)| {
+        let start = LogicalPosition::new(from.0, from.1);
+        window.dispatch_event(WindowEvent::PointerMoved { position: start });
+        window.dispatch_event(WindowEvent::PointerPressed {
+            position: start,
+            button: PointerEventButton::Left,
+        });
+        // Cross the DragArea threshold before moving over the destination.
+        window.dispatch_event(WindowEvent::PointerMoved {
+            position: LogicalPosition::new(from.0 + 10.0, from.1),
+        });
+        window.dispatch_event(WindowEvent::PointerMoved {
+            position: LogicalPosition::new(to.0, to.1),
+        });
+        window.dispatch_event(WindowEvent::PointerReleased {
+            position: LogicalPosition::new(to.0, to.1),
+            button: PointerEventButton::Left,
+        });
+        draw(&window);
+    };
+    drag((294.0, 438.0), (600.0, 620.0));
+    assert_eq!(
+        drops.borrow().as_slice(),
+        &[("rule-0".into(), "rule-2".into(), true)],
+        "first handle can cross several rows and drop after the last"
+    );
+    drag((294.0, 602.0), (600.0, 416.0));
+    assert_eq!(
+        drops.borrow().last().unwrap(),
+        &("rule-2".into(), "rule-0".into(), false),
+        "last handle can drop before the first"
+    );
+    let count = drops.borrow().len();
+    drag((294.0, 438.0), (600.0, 160.0));
+    drag((294.0, 438.0), (600.0, 450.0));
+    drag((500.0, 438.0), (600.0, 620.0));
+    click(&window, 294.0, 438.0);
+    assert_eq!(
+        drops.borrow().len(),
+        count,
+        "outside drops, same-row drops, dragging text, and clicks do not reorder"
+    );
+    key(&window, Key::DownArrow.into());
+    assert_eq!(
+        actions.borrow().last().unwrap(),
+        &("rule-down".into(), "rule-0".into()),
+        "focused handles retain keyboard priority control"
+    );
+    click(&window, 1358.0, 438.0);
+    assert_eq!(
+        actions.borrow().last().unwrap(),
+        &("edit-rule".into(), "rule-0".into())
+    );
+    click(&window, 1311.0, 438.0);
+    assert_eq!(
+        actions.borrow().last().unwrap(),
+        &("toggle-rule".into(), "rule-0".into())
+    );
+    ui.set_busy(true);
+    drag((294.0, 438.0), (600.0, 620.0));
+    assert_eq!(drops.borrow().len(), count, "saving disables drag and drop");
+    ui.set_busy(false);
+    ui.set_modal("rule".into());
+    drag((294.0, 438.0), (600.0, 620.0));
+    assert_eq!(
+        drops.borrow().len(),
+        count,
+        "dialogs block background reordering"
+    );
+    // Plain text from another application cannot impersonate an internal rule.
+    assert!(
+        super::rule_drag_id(slint::DataTransfer::from(SharedString::from("rule-0"))).is_empty()
+    );
+    ui.hide().unwrap();
+}
