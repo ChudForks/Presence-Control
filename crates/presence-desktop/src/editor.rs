@@ -44,7 +44,8 @@ pub struct ActivityRow {
     pub duration_ms: i64,
     pub timestamp: i64,
     pub archived: bool,
-    /// Recording rows cannot be archived or deleted until recording pauses.
+    pub tracked: bool,
+    /// Live totals may be archived, but deletion requires recording to pause.
     pub locked: bool,
 }
 
@@ -521,6 +522,11 @@ pub fn activity_rows(
             .filter_map(|item| {
                 let mut row = row_from_json(&item.kind, &item.entry)?;
                 row.archived = true;
+                row.tracked = item.tracks_application_time();
+                if row.tracked {
+                    row.subtitle = "Application time · Updates after each session".into();
+                    row.detail = format!("{} · Cumulative application time. Updates after each completed recording. Deleting this archived entry keeps Application time and session history.", item.entry["process"].as_str().unwrap_or(""));
+                }
                 row.subtitle = format!(
                     "{} · Archived {}",
                     row.subtitle,
@@ -548,44 +554,32 @@ pub fn activity_rows(
             timestamp: log.at,
             ..ActivityRow::default()
         }));
-        rows.extend(runtime.usage_sessions.iter().map(|session| {
-            let active = runtime
+        // The backend checkpoints the live session for crash recovery. It only
+        // belongs in history once recording finishes; live time is shown above.
+        rows.extend(runtime.usage_sessions.iter().filter_map(|session| {
+            if runtime
                 .recording
                 .as_ref()
-                .filter(|r| r.session_id == session.id);
-            let uncommitted = active
-                .map(|r| now_ms.saturating_sub(r.since).max(0))
-                .unwrap_or(0);
-            let duration = session.duration_ms.saturating_add(uncommitted);
-            ActivityRow {
+                .is_some_and(|recording| recording.session_id == session.id)
+            {
+                return None;
+            }
+            Some(ActivityRow {
                 kind: "session".into(),
                 id: session.id.clone(),
                 title: session.name.clone(),
-                subtitle: if active.is_some() {
-                    format!("{} · Recording now", session.process)
-                } else {
-                    session.process.clone()
-                },
-                time: format_duration(duration),
-                detail: if active.is_some() {
-                    format!(
-                        "{} · Started {} · Recording now. Pause recording to finish this session.",
-                        session.process,
-                        format_session_time(session.started_at)
-                    )
-                } else {
-                    format!(
-                        "{}\n{} – {}",
-                        session.process,
-                        format_session_time(session.started_at),
-                        format_session_time(session.ended_at)
-                    )
-                },
-                duration_ms: duration,
+                subtitle: session.process.clone(),
+                time: format_duration(session.duration_ms),
+                detail: format!(
+                    "{}\n{} – {}",
+                    session.process,
+                    format_session_time(session.started_at),
+                    format_session_time(session.ended_at)
+                ),
+                duration_ms: session.duration_ms,
                 timestamp: session.started_at,
-                locked: active.is_some(),
                 ..ActivityRow::default()
-            }
+            })
         }));
         rows
     };
@@ -643,17 +637,34 @@ fn total_rows(config: &Config, runtime: &RuntimeState, now_ms: i64) -> Vec<Activ
     }
     totals.into_iter().map(|(id, duration_ms)| {
         let (name, process) = names.remove(&id).unwrap_or_else(|| ("Removed application".into(), String::new()));
-        let locked = runtime.recording.as_ref().is_some_and(|recording| recording.rule_id == id);
+        let recording = runtime.recording.as_ref().filter(|recording| recording.rule_id == id);
+        let locked = recording.is_some();
+        let tracked = runtime.archive.iter().any(|item| item.tracks_application_time() && item.entry["ruleId"] == id);
+        let session = recording.and_then(|recording| runtime.usage_sessions.iter().find(|session| session.id == recording.session_id));
+        let mut subtitle = match (recording, session) {
+            (Some(recording), Some(session)) => format!(
+                "Recording now · This session {}",
+                format_duration(session.duration_ms.saturating_add(now_ms.saturating_sub(recording.since).max(0)))
+            ),
+            (Some(_), None) => "Recording now".into(),
+            _ => "Total recorded time".into(),
+        };
+        if tracked { subtitle.push_str(" · In Archive"); }
+        let mut detail = if process.is_empty() { "Cumulative application time. Archiving keeps this total here. Deleting removes the total and keeps session history.".into() }
+            else { format!("{process} · Cumulative application time. Archiving keeps this total here. Deleting removes the total and keeps session history.") };
+        if let Some(session) = session {
+            detail = format!("{detail}\nCurrent session started {}. Recording now; this session appears in Previous sessions when recording finishes.", format_session_time(session.started_at));
+        }
         ActivityRow {
             kind: "application".into(),
             id,
             title: name,
-            subtitle: if locked { "Recording now".into() } else { "Total recorded time".into() },
+            subtitle,
             time: format_duration(duration_ms),
-            detail: if process.is_empty() { "Cumulative application time. Session history is kept when this total is reset.".into() }
-                else { format!("{process} · Cumulative application time. Session history is kept when this total is reset.") },
+            detail,
             duration_ms,
             locked,
+            tracked,
             ..ActivityRow::default()
         }
     }).collect()
@@ -706,7 +717,7 @@ fn row_from_json(kind: &str, entry: &serde_json::Value) -> Option<ActivityRow> {
                 text("process")
             };
             row.detail = if kind == "application" {
-                format!("{} · Cumulative time saved when archived. Future recordings start a new total.", text("process"))
+                format!("{} · Cumulative time saved in Archive.", text("process"))
             } else {
                 format!(
                     "{}\n{} – {}",
@@ -987,7 +998,37 @@ mod tests {
     }
 
     #[test]
-    fn live_recording_adds_only_uncommitted_time_and_locks_management() {
+    fn tracked_application_rows_stay_visible_and_archives_show_the_last_completed_total() {
+        let config = default_config();
+        let mut runtime = initial_runtime();
+        runtime.usage_totals.insert("editor".into(), 20_000);
+        runtime.recording = Some(Recording {
+            session_id: "active".into(),
+            rule_id: "editor".into(),
+            since: 1_000,
+        });
+        runtime.archive = presence_core::engine::validate_archive_data(&json!({"entries":[{
+            "kind":"application", "archivedAt":1000, "tracksApplicationTime":true,
+            "entry":{"id":"total", "ruleId":"editor", "name":"Editor", "process":"Code.exe", "durationMs":10000}
+        }]})).unwrap().entries;
+        let rows = activity_rows(&config, &runtime, "application", "", false, 6_000);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].time, "0:00:25");
+        assert!(rows[0].tracked && rows[0].locked);
+        assert!(rows[0].subtitle.contains("In Archive"));
+        let archived = activity_rows(&config, &runtime, "all", "", true, 6_000);
+        assert_eq!(archived[0].time, "0:00:10");
+        assert!(archived[0].tracked && !archived[0].locked);
+        assert!(archived[0].subtitle.contains("Updates after each session"));
+        assert!(!archived[0].detail.contains("start a new total"));
+        runtime.archive.clear();
+        let rows = activity_rows(&config, &runtime, "application", "", false, 6_000);
+        assert_eq!(rows[0].time, "0:00:25");
+        assert!(!rows[0].tracked);
+    }
+
+    #[test]
+    fn live_recording_counts_in_application_time_until_the_session_finishes() {
         let config = default_config();
         let mut runtime = initial_runtime();
         runtime.usage_totals.insert("rule-1".into(), 10_000);
@@ -1010,11 +1051,32 @@ mod tests {
         assert_eq!(rows[0].title, "Editor");
         assert_eq!(rows[0].duration_ms, 15_000);
         assert!(rows[0].locked);
-        assert_eq!(rows[1].duration_ms, 7_000);
-        assert!(rows[1].locked);
+        assert_eq!(rows[0].time, "0:00:15");
+        assert_eq!(rows[0].subtitle, "Recording now · This session 0:00:07");
+        assert_eq!(rows.len(), 1, "active recordings are excluded from history");
+        assert!(activity_rows(&config, &runtime, "session", "", false, 8_000).is_empty());
         let rows = activity_rows(&config, &runtime, "all", "", false, 2_000);
         assert_eq!(rows[0].duration_ms, 10_000);
-        assert_eq!(rows[1].duration_ms, 2_000);
+        assert_eq!(rows[0].subtitle, "Recording now · This session 0:00:02");
+
+        runtime.usage_totals.insert("rule-1".into(), 15_000);
+        runtime.usage_sessions[0].duration_ms = 7_000;
+        runtime.usage_sessions[0].ended_at = 8_000;
+        runtime.recording = None;
+        let rows = activity_rows(&config, &runtime, "all", "", false, 60_000);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].time, "0:00:15");
+        assert!(!rows[0].locked);
+        assert_eq!(rows[1].id, "session-1");
+        assert_eq!(rows[1].time, "0:00:07");
+        assert!(!rows[1].locked);
+        assert!(!rows[1].subtitle.contains("Recording now"));
+        assert!(rows[1].detail.contains(" – "));
+        assert_eq!(
+            rows,
+            activity_rows(&config, &runtime, "all", "", false, 120_000),
+            "completed sessions and stopped totals remain fixed"
+        );
     }
 
     #[test]

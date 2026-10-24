@@ -49,7 +49,11 @@ In **App integrations**, drag an application's six-dot handle to change its prio
 
 Templates in display names, details, states, and artwork hover text support `{{app}}`, `{{title}}`, and `{{process}}`. Application names prefer the executable's ProductName version resource, with the executable's filename as a fallback.
 
-Optional application-time recording starts only after a confirmed automatic presence. It pauses on disconnection, manual takeover, disabled recording, or changed application. Activity includes cumulative totals, up to 500 recent sessions, recent events, and a permanent archive. Archiving a total starts a fresh total for future recordings and preserves session history; deleting a session preserves cumulative time.
+Optional application-time recording starts only after a confirmed automatic presence. It pauses on disconnection, manual takeover, disabled recording, or changed application. Activity includes cumulative totals, up to 500 recent sessions, recent events, and a permanent archive. Archiving an application total keeps it in Application time and maintains one corresponding Archive entry, updated after each completed recording. Archiving is available while recording; deleting the active total requires recording to pause. Deleting a total removes its row and leaves its final archive value saved; deleting an archived total stops its archive updates and leaves Application time counting. Archiving or deleting an individual session preserves cumulative time, and archived sessions remain fixed records.
+
+**Application time** counts live, with the current recording's session duration beneath its application name. **Previous sessions** contains completed recordings only: a session appears there with its final duration when recording stops, pauses, switches applications, or disconnects. Checkpoints still preserve recorded time for recovery. Activity rows share fixed, right-aligned time and action columns across totals, events, history, and archives.
+
+Linked application archives persist across restarts and retry failed updates. The total's checkpoint is saved before its archive update; startup repairs an interrupted update from the saved total. Application snapshots saved by older builds remain fixed records. New links never merge or overwrite those older snapshots.
 
 ## Data and migration from the Rust rewrite
 
@@ -98,7 +102,7 @@ cargo fmt --all -- --check
 cargo run -p presence-desktop -- --smoke-test
 ```
 
-The workspace test suite currently passes 77 tests, including pointer input, drag-and-drop priority and keyboard controls, the native Windows scan, Rust editor transitions, global application ID activation, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, rounded artwork and card loading, and notification timing. See [verification details](docs/verification.md) for the latest native smoke results, verified scope, and remaining checks.
+The workspace test suite covers pointer input, drag-and-drop priority and keyboard controls, the native Windows scan, Rust editor transitions, global application ID activation, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, rounded artwork and card loading, notification timing, live recording transitions into completed history, and linked application archives across sessions, deletion, restarts, and failed writes. See [verification details](docs/verification.md) for the latest results, verified scope, and remaining checks.
 
 The optional native smoke run opens the actual Slint window and exercises the Rust callback/backend path, then checks persisted data after reopening the backend. It always creates an isolated workspace beneath `artifacts/native-smoke/<run-id>/` and writes a JSON report and screenshots there. Normal application data is not used.
 

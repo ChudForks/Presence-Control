@@ -240,6 +240,9 @@ impl Host {
         ui.set_form(profile_form(&self.editor.draft));
     }
     fn refresh(&mut self, ui: &MainWindow) {
+        self.refresh_at(ui, now_ms());
+    }
+    fn refresh_at(&mut self, ui: &MainWindow, now: i64) {
         ui.set_global_id(self.editor.config.application_id.clone().into());
         self.refresh_artwork(ui);
         let query = ui.get_search().to_lowercase();
@@ -348,7 +351,7 @@ impl Host {
                 })
                 .into(),
         );
-        let preview = self.editor.preview(&self.runtime, now_ms());
+        let preview = self.editor.preview(&self.runtime, now);
         ui.set_preview_kind(
             if self.editor.draft.r#type == 2 {
                 format!("Listening to {}", preview.app_name)
@@ -379,7 +382,7 @@ impl Host {
                 kind,
                 "",
                 target == 3,
-                now_ms(),
+                now,
             )
             .into_iter()
             .map(|row| ActivityRow {
@@ -390,6 +393,7 @@ impl Host {
                 time: row.time.into(),
                 detail: row.detail.into(),
                 locked: row.locked,
+                tracked: row.tracked,
             })
             .collect();
             match target {
@@ -749,7 +753,11 @@ async fn worker(
                 };
                 result.map(|state| {
                     let _ = updates.send(Update::Runtime(Box::new(state)));
-                    "Activity updated.".into()
+                    if operation == "archive-activity" && kind == "application" {
+                        "Application time added to Archive. It stays here and updates after each session.".into()
+                    } else {
+                        "Activity updated.".into()
+                    }
                 })
             }
             Command::Import => {

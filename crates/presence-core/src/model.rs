@@ -140,6 +140,19 @@ pub struct ArchivedActivity {
     pub extra: serde_json::Map<String, Value>,
 }
 
+impl ArchivedActivity {
+    /// Older application archives remain fixed snapshots. New archives opt in
+    /// to following the current total's generation until that total is deleted.
+    pub fn tracks_application_time(&self) -> bool {
+        self.kind == "application"
+            && self
+                .extra
+                .get("tracksApplicationTime")
+                .and_then(Value::as_bool)
+                == Some(true)
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveData {

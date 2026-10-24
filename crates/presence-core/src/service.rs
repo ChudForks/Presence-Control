@@ -74,6 +74,7 @@ pub struct Service<R: RpcClient = DiscordRpc> {
     source_pid: Option<u32>,
     playback_duration: Option<i64>,
     usage_dirty: bool,
+    archive_dirty: bool,
     usage_total_ids: BTreeMap<String, String>,
     now: Arc<dyn Fn() -> i64 + Send + Sync>,
     detect: Detector,
@@ -114,6 +115,7 @@ impl<R: RpcClient> Service<R> {
                 .unwrap_or_else(|| format!("legacy:{id}"));
             if state.archive.iter().any(|item| {
                 item.kind == "application"
+                    && !item.tracks_application_time()
                     && string_field(&item.entry, "ruleId") == Some(id.as_str())
                     && string_field(&item.entry, "id") == Some(total_id.as_str())
             }) {
@@ -136,7 +138,7 @@ impl<R: RpcClient> Service<R> {
             })
             .collect();
         usage_dirty |= session_count != state.usage_sessions.len();
-        Self {
+        let mut service = Self {
             config,
             state,
             rpc,
@@ -144,13 +146,38 @@ impl<R: RpcClient> Service<R> {
             source_pid: None,
             playback_duration: None,
             usage_dirty,
+            archive_dirty: false,
             usage_total_ids,
             now: Arc::new(unix_millis),
             detect: Arc::new(|| Box::pin(detect_apps())),
             save_usage: Arc::new(|_| Ok(())),
             save_archive: Arc::new(|_| Ok(())),
             on_change: None,
+        };
+        // Usage is saved before linked archive updates. Recover an interrupted
+        // archive write from the latest checkpoint without reviving deleted totals.
+        for id in service
+            .state
+            .usage_totals
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+        {
+            service.sync_archived_total(&id);
         }
+        for item in &mut service.state.archive {
+            if item.tracks_application_time()
+                && string_field(&item.entry, "ruleId")
+                    .and_then(|rule| service.usage_total_ids.get(rule))
+                    .map(String::as_str)
+                    != string_field(&item.entry, "id")
+            {
+                item.extra
+                    .insert("tracksApplicationTime".into(), false.into());
+                service.archive_dirty = true;
+            }
+        }
+        service
     }
 
     pub fn set_persistence(&mut self, save_usage: SaveUsage, save_archive: SaveArchive) {
@@ -221,6 +248,9 @@ impl<R: RpcClient> Service<R> {
                 session.duration_ms = session.duration_ms.saturating_add(duration);
                 session.ended_at = session.ended_at.max(now);
             }
+        }
+        if stop {
+            self.sync_archived_total(&recording.rule_id);
         }
         self.state.recording = if stop {
             None
@@ -296,12 +326,12 @@ impl<R: RpcClient> Service<R> {
 
     fn persist_usage(&mut self, strict: bool) -> Result<(), String> {
         if !self.usage_dirty {
-            return Ok(());
+            return self.persist_archive(false);
         }
         match (self.save_usage)(&self.usage_data()) {
             Ok(()) => {
                 self.usage_dirty = false;
-                Ok(())
+                self.persist_archive(false)
             }
             Err(error) => {
                 if strict {
@@ -317,7 +347,49 @@ impl<R: RpcClient> Service<R> {
     }
 
     pub fn flush_usage(&mut self) -> Result<(), String> {
-        self.persist_usage(true)
+        self.persist_usage(true)?;
+        self.persist_archive(true)
+    }
+
+    fn persist_archive(&mut self, strict: bool) -> Result<(), String> {
+        if !self.archive_dirty {
+            return Ok(());
+        }
+        match (self.save_archive)(&self.archive_data()) {
+            Ok(()) => {
+                self.archive_dirty = false;
+                Ok(())
+            }
+            Err(error) => {
+                if strict {
+                    return Err(error);
+                }
+                let message = "Archived application time could not be updated. It will be retried.";
+                if self.state.logs.first().map(|entry| entry.message.as_str()) != Some(message) {
+                    self.log("error", message);
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn sync_archived_total(&mut self, rule_id: &str) {
+        let Some(total_id) = self.usage_total_ids.get(rule_id) else {
+            return;
+        };
+        let Some(duration) = self.state.usage_totals.get(rule_id) else {
+            return;
+        };
+        for item in &mut self.state.archive {
+            if item.tracks_application_time()
+                && string_field(&item.entry, "id") == Some(total_id.as_str())
+                && string_field(&item.entry, "ruleId") == Some(rule_id)
+                && item.entry["durationMs"] != *duration
+            {
+                item.entry["durationMs"] = (*duration).into();
+                self.archive_dirty = true;
+            }
+        }
     }
 
     fn validate_activity_reference(kind: &str, id: &str) -> Result<(), String> {
@@ -329,11 +401,6 @@ impl<R: RpcClient> Service<R> {
     }
 
     fn application_time(&self, rule_id: &str) -> Result<ApplicationTime, String> {
-        if self.state.recording.as_ref().map(|r| r.rule_id.as_str()) == Some(rule_id) {
-            return Err(
-                "Pause time recording before deleting or archiving this application’s time.".into(),
-            );
-        }
         let duration = *self
             .state
             .usage_totals
@@ -384,6 +451,16 @@ impl<R: RpcClient> Service<R> {
 
     pub async fn archive_activity(&mut self, kind: &str, id: &str) -> Result<RuntimeState, String> {
         Self::validate_activity_reference(kind, id)?;
+        if self.archive_dirty {
+            self.persist_usage(true)?;
+        }
+        if kind == "application" {
+            self.application_time(id)?;
+            self.checkpoint_usage(false);
+            // Save the baseline first so the linked archive can never outrun
+            // its recoverable application total, including during live recording.
+            self.persist_usage(true)?;
+        }
         if kind == "session"
             && self.state.recording.as_ref().map(|r| r.session_id.as_str()) == Some(id)
         {
@@ -406,37 +483,50 @@ impl<R: RpcClient> Service<R> {
             _ => None,
         }
         .ok_or("This activity entry no longer exists.")?;
-        if self.state.archive.iter().any(|item| {
+        let existing = self.state.archive.iter().position(|item| {
             item.kind == kind && string_field(&item.entry, "id") == string_field(&entry, "id")
-        }) {
+        });
+        if existing.is_some() && kind != "application" {
             return Err("This entry is already archived.".into());
         }
         let mut entries = self.state.archive.clone();
-        entries.insert(
-            0,
-            ArchivedActivity {
-                kind: kind.into(),
-                entry,
-                archived_at: (self.now)(),
-                extra: Default::default(),
-            },
-        );
-        // Save the permanent copy first; startup recovery removes an interrupted
-        // duplicate from recent usage only after seeing this archive entry.
+        if let Some(index) = existing {
+            if entries[index].tracks_application_time() {
+                self.publish();
+                return Ok(self.runtime());
+            }
+            entries[index].entry = entry;
+            entries[index]
+                .extra
+                .insert("tracksApplicationTime".into(), true.into());
+        } else {
+            let extra = if kind == "application" {
+                serde_json::Map::from_iter([("tracksApplicationTime".into(), true.into())])
+            } else {
+                Default::default()
+            };
+            entries.insert(
+                0,
+                ArchivedActivity {
+                    kind: kind.into(),
+                    entry,
+                    archived_at: (self.now)(),
+                    extra,
+                },
+            );
+        }
+        // Events and sessions move only after their permanent copy is saved.
+        // Application totals remain in usage and follow the same generation.
         (self.save_archive)(&ArchiveData {
             entries: entries.clone(),
         })?;
         self.state.archive = entries;
+        self.archive_dirty = false;
         if kind == "event" {
             self.state.logs.retain(|item| item.id != id);
-        } else {
+        } else if kind == "session" {
             self.checkpoint_usage(false);
-            if kind == "application" {
-                self.state.usage_totals.remove(id);
-                self.usage_total_ids.remove(id);
-            } else {
-                self.state.usage_sessions.retain(|item| item.id != id);
-            }
+            self.state.usage_sessions.retain(|item| item.id != id);
             self.usage_dirty = true;
             self.persist_usage(false)?;
         }
@@ -459,6 +549,11 @@ impl<R: RpcClient> Service<R> {
                 self.state.logs.retain(|item| item.id != id);
             }
             "application" => {
+                if self.state.recording.as_ref().map(|r| r.rule_id.as_str()) == Some(id) {
+                    return Err(
+                        "Pause time recording before deleting this application’s time.".into(),
+                    );
+                }
                 let entry = self.application_time(id)?;
                 self.checkpoint_usage(false);
                 self.state.usage_totals.remove(id);
@@ -467,9 +562,21 @@ impl<R: RpcClient> Service<R> {
                 if let Err(error) = self.persist_usage(true) {
                     self.state.usage_totals.insert(id.into(), entry.duration_ms);
                     self.usage_total_ids.insert(id.into(), entry.id);
+                    self.usage_dirty = true;
                     self.publish();
                     return Err(error);
                 }
+                for item in &mut self.state.archive {
+                    if item.tracks_application_time()
+                        && string_field(&item.entry, "id") == Some(entry.id.as_str())
+                        && string_field(&item.entry, "ruleId") == Some(id)
+                    {
+                        item.extra
+                            .insert("tracksApplicationTime".into(), false.into());
+                        self.archive_dirty = true;
+                    }
+                }
+                self.persist_archive(false)?;
             }
             "session" => {
                 if !self.state.usage_sessions.iter().any(|item| item.id == id) {
@@ -505,7 +612,7 @@ impl<R: RpcClient> Service<R> {
         {
             return Err("This archived entry no longer exists.".into());
         }
-        if matches!(kind, "session" | "application") {
+        if self.archive_dirty || matches!(kind, "session" | "application") {
             // Do not remove the only permanent copy until recent-history cleanup
             // has reached disk successfully.
             self.persist_usage(true)?;
@@ -521,6 +628,7 @@ impl<R: RpcClient> Service<R> {
             entries: entries.clone(),
         })?;
         self.state.archive = entries;
+        self.archive_dirty = false;
         self.publish();
         Ok(self.runtime())
     }
@@ -1344,58 +1452,110 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn application_total_archive_recovers_interrupted_write_and_new_total_starts_fresh() {
+    async fn application_archive_keeps_the_total_and_updates_the_same_entry_after_each_session() {
         let mut f = Fixture::new();
         f.automatic(true);
         f.service.tick().await;
         f.advance(15_000);
-        assert!(f
+        let session = f
             .service
+            .state
+            .recording
+            .as_ref()
+            .unwrap()
+            .session_id
+            .clone();
+        f.service
             .archive_activity("application", "r1")
             .await
-            .unwrap_err()
-            .contains("Pause"));
+            .unwrap();
+        let original = f.saved_archive().entries[0].clone();
+        assert!(original.tracks_application_time());
+        assert_eq!(original.entry["durationMs"], 15_000);
+        assert_eq!(f.saved_usage().totals["r1"], 15_000);
+        assert_eq!(
+            f.service.state.recording.as_ref().unwrap().session_id,
+            session
+        );
         assert!(f
             .service
             .delete_activity("application", "r1")
             .await
             .unwrap_err()
             .contains("Pause"));
-        f.record(false).await;
-        let before = f.saved_usage();
+        f.advance(5_000);
+        f.service.tick().await;
+        assert_eq!(f.saved_usage().totals["r1"], 20_000);
+        assert_eq!(
+            f.saved_archive().entries[0],
+            original,
+            "checkpoints keep the archive at its last completed value"
+        );
         f.service
             .archive_activity("application", "r1")
             .await
             .unwrap();
-        assert!(f.service.state.usage_totals.is_empty());
+        assert_eq!(f.saved_archive().entries.len(), 1, "Archive is idempotent");
+        f.advance(2_000);
+        f.record(false).await;
+        assert_eq!(f.service.state.usage_totals["r1"], 22_000);
         assert_eq!(f.service.state.usage_sessions.len(), 1);
         let archive = f.saved_archive();
-        assert_eq!(archive.entries[0].entry["durationMs"], 15_000);
+        assert_eq!(archive.entries[0].entry["durationMs"], 22_000);
         assert_eq!(archive.entries[0].entry["name"], "Editor");
+        assert_eq!(archive.entries[0].entry["id"], original.entry["id"]);
+        assert_eq!(archive.entries[0].archived_at, original.archived_at);
         validate_archive_data(&serde_json::to_value(&archive).unwrap()).unwrap();
-        let recovered = Fixture::with_data(before, archive.clone());
-        assert!(recovered.service.state.usage_totals.is_empty());
         f.record(true).await;
         f.advance(7_000);
         f.service.tick().await;
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 22_000);
         f.record(false).await;
-        assert_eq!(f.service.state.usage_totals["r1"], 7_000);
-        assert_ne!(
+        assert_eq!(f.service.state.usage_totals["r1"], 29_000);
+        assert_eq!(f.saved_archive().entries.len(), 1);
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 29_000);
+        assert_eq!(
             f.saved_usage().total_ids.unwrap()["r1"],
             archive.entries[0].entry["id"]
         );
-        let restarted = Fixture::with_data(f.saved_usage(), archive);
-        assert_eq!(restarted.service.state.usage_totals["r1"], 7_000);
+        let restarted = Fixture::with_data(f.saved_usage(), f.saved_archive());
+        assert_eq!(restarted.service.state.usage_totals["r1"], 29_000);
+        assert_eq!(
+            restarted.service.state.archive[0].entry["durationMs"],
+            29_000
+        );
         f.service
             .delete_activity("application", "r1")
             .await
             .unwrap();
         assert!(f.saved_usage().totals.is_empty());
         assert_eq!(f.saved_usage().sessions.len(), 2);
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 29_000);
+        assert!(!f.saved_archive().entries[0].tracks_application_time());
+        f.record(true).await;
+        f.advance(3_000);
+        f.record(false).await;
+        assert_eq!(f.saved_usage().totals["r1"], 3_000);
+        assert_ne!(
+            f.saved_usage().total_ids.unwrap()["r1"],
+            original.entry["id"]
+        );
+        assert_eq!(
+            f.saved_archive().entries[0].entry["durationMs"],
+            29_000,
+            "a deleted total's saved archive stays fixed"
+        );
+        f.service
+            .archive_activity("application", "r1")
+            .await
+            .unwrap();
+        assert_eq!(f.saved_archive().entries.len(), 2);
+        assert!(f.saved_archive().entries[0].tracks_application_time());
+        assert!(!f.saved_archive().entries[1].tracks_application_time());
     }
 
     #[tokio::test]
-    async fn legacy_total_and_strict_delete_failures_keep_original_and_archive_copy() {
+    async fn archive_creation_and_deletion_failures_preserve_totals_and_links() {
         let original = UsageData {
             totals: BTreeMap::from([("r1".into(), 12_000)]),
             ..Default::default()
@@ -1411,6 +1571,7 @@ mod tests {
             "Usage unavailable"
         );
         assert_eq!(f.service.state.usage_totals["r1"], 12_000);
+        f.fail_usage.store(false, Ordering::SeqCst);
         assert_eq!(
             f.service
                 .archive_activity("application", "r1")
@@ -1426,27 +1587,272 @@ mod tests {
             .unwrap();
         let archive = f.saved_archive();
         assert_eq!(archive.entries[0].entry["id"], "legacy:r1");
-        assert!(Fixture::with_data(original, archive.clone())
-            .service
-            .state
-            .usage_totals
-            .is_empty());
+        assert_eq!(
+            Fixture::with_data(original, archive.clone())
+                .service
+                .state
+                .usage_totals["r1"],
+            12_000
+        );
         let id = archive.entries[0].entry["id"].as_str().unwrap();
+        f.fail_archive.store(true, Ordering::SeqCst);
         assert_eq!(
             f.service
                 .delete_archived_activity("application", id)
                 .await
                 .unwrap_err(),
-            "Usage unavailable"
+            "Archive unavailable"
         );
         assert_eq!(f.saved_archive().entries.len(), 1);
-        f.fail_usage.store(false, Ordering::SeqCst);
+        f.fail_archive.store(false, Ordering::SeqCst);
         f.service
             .delete_archived_activity("application", id)
             .await
             .unwrap();
         assert!(f.saved_archive().entries.is_empty());
+        assert_eq!(f.service.state.usage_totals["r1"], 12_000);
+        f.automatic(true);
+        f.service.tick().await;
+        f.advance(5_000);
+        f.record(false).await;
+        assert_eq!(f.saved_usage().totals["r1"], 17_000);
+        assert!(
+            f.saved_archive().entries.is_empty(),
+            "deleting an archive stops its subscription"
+        );
+    }
+
+    #[tokio::test]
+    async fn linked_archive_write_failures_retry_and_recover_after_restart() {
+        let mut f = Fixture::new();
+        f.automatic(true);
+        f.service.tick().await;
+        f.service
+            .archive_activity("application", "r1")
+            .await
+            .unwrap();
+        f.fail_archive.store(true, Ordering::SeqCst);
+        f.advance(15_000);
+        f.record(false).await;
+        assert_eq!(f.saved_usage().totals["r1"], 15_000);
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 0);
+        assert_eq!(f.service.state.archive[0].entry["durationMs"], 15_000);
+        assert_eq!(f.service.flush_usage().unwrap_err(), "Archive unavailable");
+        assert!(f.service.state.logs.iter().any(|log| log
+            .message
+            .contains("Archived application time could not be updated")));
+
+        let mut restarted = Fixture::with_data(f.saved_usage(), f.saved_archive());
+        assert_eq!(restarted.service.state.usage_totals["r1"], 15_000);
+        assert_eq!(
+            restarted.service.state.archive[0].entry["durationMs"],
+            15_000
+        );
+        restarted.service.flush_usage().unwrap();
+        assert_eq!(
+            restarted.saved_archive().entries[0].entry["durationMs"],
+            15_000
+        );
+        f.fail_archive.store(false, Ordering::SeqCst);
+        f.service.tick().await;
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 15_000);
+
+        f.record(true).await;
+        f.advance(5_000);
+        f.fail_usage.store(true, Ordering::SeqCst);
+        f.record(false).await;
+        assert_eq!(
+            f.saved_archive().entries[0].entry["durationMs"],
+            15_000,
+            "archive writes wait for the total's durable checkpoint"
+        );
+        f.service
+            .log("info", "Save an event alongside the pending total update");
+        let event_id = f.service.state.logs[0].id.clone();
+        assert_eq!(
+            f.service
+                .archive_activity("event", &event_id)
+                .await
+                .unwrap_err(),
+            "Usage unavailable"
+        );
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 15_000);
+        f.fail_usage.store(false, Ordering::SeqCst);
+        f.service.tick().await;
+        assert_eq!(f.saved_usage().totals["r1"], 20_000);
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 20_000);
+        f.service
+            .archive_activity("event", &event_id)
+            .await
+            .unwrap();
+        assert_eq!(f.saved_archive().entries[1].entry["durationMs"], 20_000);
+    }
+
+    #[tokio::test]
+    async fn linked_archives_finish_on_close_disconnect_manual_takeover_stop_and_shutdown() {
+        for ending in [
+            "close",
+            "disconnect",
+            "manual",
+            "stop",
+            "shutdown",
+            "restart",
+        ] {
+            let mut f = Fixture::new();
+            f.automatic(true);
+            f.service.tick().await;
+            f.service
+                .archive_activity("application", "r1")
+                .await
+                .unwrap();
+            f.advance(5_000);
+            f.service.tick().await;
+            assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 0);
+            f.advance(10_000);
+            match ending {
+                "close" => {
+                    f.set_apps(vec![]);
+                    f.service.tick().await;
+                }
+                "disconnect" => f.service.on_disconnect(f.now.load(Ordering::SeqCst)),
+                "manual" => f.activate().await,
+                "stop" => f.service.stop().await.unwrap(),
+                "shutdown" => f.service.dispose().await,
+                "restart" => {
+                    f.set_apps(vec![DetectedApp {
+                        pid: 200,
+                        process: "Code.exe".into(),
+                        title: "Restarted".into(),
+                        ..Default::default()
+                    }]);
+                    f.service.tick().await;
+                }
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                f.saved_archive().entries[0].entry["durationMs"],
+                15_000,
+                "{ending}"
+            );
+            assert_eq!(f.saved_usage().totals["r1"], 15_000, "{ending}");
+        }
+    }
+
+    #[tokio::test]
+    async fn application_switch_updates_only_the_finished_app_and_session_archives_stay_fixed() {
+        let mut f = Fixture::new();
+        f.automatic(true);
+        f.service.config.rules.push(AppRule {
+            id: "r2".into(),
+            name: "Notes".into(),
+            process: "notepad.exe".into(),
+            ..f.service.config.rules[0].clone()
+        });
+        f.service.tick().await;
+        let first_session = f
+            .service
+            .state
+            .recording
+            .as_ref()
+            .unwrap()
+            .session_id
+            .clone();
+        f.service
+            .archive_activity("application", "r1")
+            .await
+            .unwrap();
+        f.advance(10_000);
+        f.set_apps(vec![DetectedApp {
+            pid: 101,
+            process: "notepad.exe".into(),
+            title: "Notes".into(),
+            ..Default::default()
+        }]);
+        f.service.tick().await;
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 10_000);
+        f.service
+            .archive_activity("session", &first_session)
+            .await
+            .unwrap();
+        let saved_session = f.saved_archive().entries[0].clone();
+        f.service
+            .archive_activity("application", "r2")
+            .await
+            .unwrap();
+        f.advance(6_000);
+        f.service.tick().await;
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 0);
+        f.record(false).await;
+        assert_eq!(f.saved_archive().entries[0].entry["durationMs"], 6_000);
+        assert_eq!(f.saved_archive().entries[1], saved_session);
+        assert_eq!(f.saved_archive().entries[2].entry["durationMs"], 10_000);
+    }
+
+    #[tokio::test]
+    async fn deleted_totals_stay_deleted_if_the_archive_detach_write_is_interrupted() {
+        let mut f = Fixture::with_data(
+            UsageData {
+                totals: BTreeMap::from([("r1".into(), 12_000)]),
+                ..Default::default()
+            },
+            ArchiveData::default(),
+        );
+        f.service
+            .archive_activity("application", "r1")
+            .await
+            .unwrap();
+        f.fail_usage.store(true, Ordering::SeqCst);
+        assert_eq!(
+            f.service
+                .delete_activity("application", "r1")
+                .await
+                .unwrap_err(),
+            "Usage unavailable"
+        );
+        assert!(f.service.state.archive[0].tracks_application_time());
+        f.fail_usage.store(false, Ordering::SeqCst);
+        f.fail_archive.store(true, Ordering::SeqCst);
+        f.service
+            .delete_activity("application", "r1")
+            .await
+            .unwrap();
         assert!(f.saved_usage().totals.is_empty());
+        assert!(
+            f.saved_archive().entries[0].tracks_application_time(),
+            "simulate a stale archive file"
+        );
+        let mut restarted = Fixture::with_data(f.saved_usage(), f.saved_archive());
+        assert!(restarted.service.state.usage_totals.is_empty());
+        assert!(!restarted.service.state.archive[0].tracks_application_time());
+        assert_eq!(
+            restarted.service.state.archive[0].entry["durationMs"],
+            12_000
+        );
+        restarted.service.flush_usage().unwrap();
+        assert!(!restarted.saved_archive().entries[0].tracks_application_time());
+    }
+
+    #[test]
+    fn legacy_application_snapshots_remain_fixed_and_keep_interrupted_move_recovery() {
+        let archive = validate_archive_data(&json!({"entries":[{"kind":"application","archivedAt":20000,"entry":{"id":"legacy:r1","ruleId":"r1","name":"Editor","process":"Code.exe","durationMs":10000}}]})).unwrap();
+        let interrupted = Fixture::with_data(
+            UsageData {
+                totals: BTreeMap::from([("r1".into(), 10_000)]),
+                ..Default::default()
+            },
+            archive.clone(),
+        );
+        assert!(interrupted.service.state.usage_totals.is_empty());
+        let fresh = Fixture::with_data(
+            UsageData {
+                totals: BTreeMap::from([("r1".into(), 3_000)]),
+                total_ids: Some(BTreeMap::from([("r1".into(), "new-total".into())])),
+                ..Default::default()
+            },
+            archive.clone(),
+        );
+        assert_eq!(fresh.service.state.usage_totals["r1"], 3_000);
+        assert_eq!(fresh.service.state.archive, archive.entries);
     }
 
     #[tokio::test]

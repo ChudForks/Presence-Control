@@ -98,6 +98,32 @@ The 150% run also passed all 63 checks in `artifacts/native-smoke/57e25f27-9c7c-
 
 The updated portable executable passed all 63 checks in `artifacts/native-smoke/b4cff132-aeb0-4908-9c43-2f2f5603ae62/smoke-report.json`. It is 17,469,440 bytes; SHA-256 `783245c5ea39e7d5a5debd9740d1bdeaed7c55861ccd7c4f684a3adb5b4e7592` matches the Cargo release output and `release/SHA256SUMS.txt`. The previous portable executable is preserved as `release/presence-control-before-integrations-polish-20261024.exe`.
 
+## Activity log alignment and recording placement
+
+Activity section headers now give their description the flexible space and keep the entry count at the right. Every activity row uses a flexible name column, a fixed 112 px right-aligned monospace time column, and a fixed 124 px action group. Totals, events, completed sessions, and archived entries retain the same time alignment despite different name lengths or the archive's missing Archive action.
+
+The active session is excluded from Previous sessions while the backend continues checkpointing it for recovery. Application time displays the live cumulative duration and the current session's elapsed duration, updated by the UI clock between backend checks. When recording ends, the existing session appears in history with its final duration and enabled management controls. Stopped totals and completed durations remain fixed. All projections within a refresh use one clock sample.
+
+`cargo test --workspace` passed all 78 tests. The host/UI regression advances time without a backend update, applies a persisted checkpoint without double counting, and finishes the recording while retaining older history. Clippy with `-D warnings`, formatting, diff whitespace checks, and the release build passed.
+
+The release executable passed all 68 native smoke checks in `artifacts/native-smoke/1072572b-c0a6-49e9-9843-f70c3b731c50/smoke-report.json`. Its additional recording checks use synthetic host snapshots without modifying backend usage or ordinary application data. `slint-activity-recording.png`, `slint-activity-finished.png`, and `slint-archive.png` were reviewed for alignment and placement.
+
+The updated portable executable is `release/presence-control.exe`, 17,487,360 bytes. Its SHA-256 is `fe132eb2d436a0a8e4756a2043cfb0e46bc607c07effde332d849f97350e4e9e`, matching the tested Cargo release output and `release/SHA256SUMS.txt`. The previous copy is preserved as `release/presence-control-before-activity-log-20261024-121655.exe`. Relaunch the portable application to load these changes.
+
+## Application archives follow cumulative totals
+
+Archiving Application time now keeps the total and its row, including during active recording. A `tracksApplicationTime` archive marker binds one saved entry to that total's existing generation ID. Recording checkpoints continue to update Application time; the linked archive updates when recording finishes, pauses, switches applications, disconnects, stops, or shuts down. Repeating Archive creates no duplicate. The row shows In Archive, and its Archive action is disabled while linked. Individual archived sessions remain fixed records.
+
+Delete remains the action that removes an application total. It requires active recording to pause, retains the final archive value, and detaches the saved entry. A future recording creates a new generation and leaves the older archive fixed. Deleting only the archive entry preserves Application time and stops its archive updates. Older application snapshots remain unchanged, including their interrupted-move recovery behavior.
+
+Usage checkpoints reach disk before linked archive updates. Failed archive updates remain pending and retry; restart repairs a stale archive from its matching saved total. Startup detaches orphaned links without recreating deleted totals. Archive mutations cannot accidentally save a pending total update ahead of usage. Shutdown reports an unsaved archive and retains the worker for retry.
+
+All 85 workspace tests passed, including multiple sessions, live archiving, duplicate prevention, app switching, recording completion paths, generation identity, independent deletion, legacy snapshots, interrupted writes, and actual worker/store shutdown failure and retry. Clippy with `-D warnings`, formatting, whitespace checks, and the release build passed.
+
+The tested release passed all 72 native checks in `artifacts/native-smoke/61ad5778-f457-4b89-ad94-c056fe0b87de/smoke-report.json`. The workflow checks the retained Application time row, linked archive metadata, restart persistence, explicit total deletion, retained detached archive, and no resurrection after restart. `slint-application-time-linked.png` and `slint-archive-linked-total.png` were visually reviewed.
+
+The portable copy is `release/presence-control.exe`, 17,502,208 bytes, with SHA-256 `eed1c7ce0bbdf9118c0420d63e47d9bec121a7b2053c6388607d502bae04b01a`, matching the tested release output and `release/SHA256SUMS.txt`. Its predecessor is preserved as `release/presence-control-before-linked-archive-20261024-124151.exe`. Relaunch the application to use this behavior.
+
 ## Practical limits
 
 The renderer still uses grayscale antialiasing, not WebView2/ClearType RGB subpixel output, so pixel-for-pixel equality with the older application is not established.

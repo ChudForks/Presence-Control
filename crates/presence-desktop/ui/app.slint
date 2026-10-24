@@ -4,7 +4,7 @@ import { Typography, Glyph, UiButton, IconButton, Input, Field, SectionTitle, To
 export struct ProfileRow { id: string, title: string, subtitle: string, theme: string, selected: bool, artwork: image, has-artwork: bool }
 export struct RuleRow { id: string, name: string, process: string, profile: string, enabled: bool }
 export struct AppRow { id: string, process: string, title: string }
-export struct ActivityRow { id: string, kind: string, title: string, subtitle: string, time: string, detail: string, locked: bool }
+export struct ActivityRow { id: string, kind: string, title: string, subtitle: string, time: string, detail: string, locked: bool, tracked: bool }
 export struct ProfileForm {
     id: string, name: string, application-id: string, app-name: string, activity-type: int,
     details: string, state: string, large-image: string, large-text: string, small-image: string, small-text: string,
@@ -59,11 +59,12 @@ component HistorySection inherits Rectangle {
             heading := HorizontalLayout { cross-axis-alignment: center;
                 padding: 23px; spacing: 18px;
                 VerticalLayout {
+                    horizontal-stretch: 1; min-width: 0px;
                     spacing: 9px;
                     Text { text: root.title; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; }
                     if root.description != "": Text { text: root.description; color: #818181; font-size: 12px; wrap: word-wrap; }
                 }
-                Text { text: root.entries.length + " entries"; color: #818181; font-size: 11px; vertical-alignment: center; }
+                Text { text: root.entries.length + " entries"; width: 80px; horizontal-stretch: 0; color: #818181; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                 Glyph { name: root.expanded ? "down" : "arrow"; width: 15px; height: 15px; }
             }
             TouchArea { mouse-cursor: pointer; clicked => { root.expanded = !root.expanded; } }
@@ -83,14 +84,18 @@ component HistorySection inherits Rectangle {
                     y: 0px; height: 76px; padding-left: 24px; padding-right: 20px; spacing: 14px;
                     Rectangle { width: 36px; height: 36px; background: #151515; border-width: 1px; border-color: #262626; border-radius: 8px; Glyph { name: entry.kind == "event" ? "activity" : "clock"; x: 9px; y: 9px; } }
                     VerticalLayout {
+                        horizontal-stretch: 1; min-width: 0px;
                         spacing: 5px; alignment: center;
                         Text { text: entry.title; color: #d5d5d5; font-size: 12px; font-weight: Typography.title-weight; overflow: elide; }
                         if entry.subtitle != "": Text { text: entry.subtitle; color: #818181; font-size: 11px; overflow: elide; }
                     }
-                    Text { text: entry.time; color: #aaaaaa; font-size: 11px; vertical-alignment: center; }
-                    if !root.archived: IconButton { icon: "archive"; label: "Archive entry"; enabled: !root.busy && !entry.locked; clicked => { root.action("archive-activity", entry.kind + ":" + entry.id); } }
-                    IconButton { icon: "trash"; label: "Delete entry"; enabled: !root.busy && !entry.locked; clicked => { root.action(root.archived ? "delete-archived" : "delete-activity", entry.kind + ":" + entry.id); } }
-                    IconButton { icon: "down"; label: "Expand entry"; clicked => { entry-box.entry-expanded = !entry-box.entry-expanded; } }
+                    Text { text: entry.time; width: 112px; horizontal-stretch: 0; color: #aaaaaa; font-family: "Consolas"; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                    HorizontalLayout {
+                        width: 124px; horizontal-stretch: 0; spacing: 14px; alignment: end;
+                        if !root.archived: IconButton { icon: "archive"; label: entry.tracked ? "Application time is in Archive" : "Archive entry"; enabled: !root.busy && !entry.tracked && (!entry.locked || entry.kind == "application"); clicked => { root.action("archive-activity", entry.kind + ":" + entry.id); } }
+                        IconButton { icon: "trash"; label: "Delete entry"; enabled: !root.busy && !entry.locked; clicked => { root.action(root.archived ? "delete-archived" : "delete-activity", entry.kind + ":" + entry.id); } }
+                        IconButton { icon: "down"; label: "Expand entry"; clicked => { entry-box.entry-expanded = !entry-box.entry-expanded; } }
+                    }
                 }
                 if self.entry-expanded: Text { x: 74px; y: 77px; width: parent.width - 98px; height: self.preferred-height; text: entry.detail; color: #888888; font-size: 11px; wrap: word-wrap; }
             }
@@ -558,9 +563,9 @@ export component MainWindow inherits Window {
                     min-height: 96px; background: @linear-gradient(115deg, #161616, #090909); border-width: 1px; border-color: #333333; border-radius: 12px;
                     HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 18px; Rectangle { width: 46px; height: 46px; border-width: 1px; border-color: #333333; border-radius: 12px; background: #1b1b1b; Glyph { name: "clock"; x: 11px; y: 11px; width: 24px; height: 24px; } } SectionTitle { title: "Record application time"; description: "Save cumulative time and previous sessions while an automatic presence is live. Turning this off keeps your history."; } Text { text: root.record-time ? "Enabled" : "Off"; color: #818181; font-size: 12px; vertical-alignment: center; } Toggle { checked: root.record-time; enabled: root.modal == "" && !root.busy; label: "Record application time"; toggled => { root.action("toggle-recording", ""); } } }
                 }
-                HistorySection { title: "Application time"; description: "Archive a total to save a snapshot and start fresh. Session history is kept. Pause recording to manage the active application's total."; empty-text: "No recorded time yet. Enable recording and start an automatic application presence."; entries: root.totals; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
+                HistorySection { title: "Application time"; description: "Archive keeps the total here and updates its Archive entry after each completed recording. Delete removes the total; session history is kept. Pause recording to delete the active total."; empty-text: "No recorded time yet. Enable recording and start an automatic application presence."; entries: root.totals; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
                 HistorySection { title: "This session"; empty-text: "A fresh start. Your connection and presence updates will appear here when you go live."; entries: root.events; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
-                HistorySection { title: "Previous sessions"; description: "Your most recent 500 recorded sessions. Deleting or archiving an entry keeps its cumulative recorded time."; empty-text: "Completed sessions will appear here and remain available after restarting the app."; entries: root.sessions; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
+                HistorySection { title: "Previous sessions"; description: "Your most recent 500 completed sessions. Deleting or archiving an entry keeps its cumulative recorded time."; empty-text: "Completed sessions will appear here and remain available after restarting the app."; entries: root.sessions; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
                 HistorySection { title: "Archive"; description: "Saved entries stay here across restarts until you delete them."; empty-text: "Use an entry's archive button to save it here permanently."; entries: root.archived; archived: true; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
             }
             if root.page == 3: HistorySection { title: "Saved activity"; description: "Archived events, application totals, and sessions remain here across restarts."; empty-text: "Your archive is empty. Save an entry from the activity log to keep it here."; entries: root.archived; archived: true; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }

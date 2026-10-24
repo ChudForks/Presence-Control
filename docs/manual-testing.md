@@ -2,7 +2,7 @@
 
 Run `release/presence-control.exe`, or run `cargo run -p presence-desktop` from this repository. The new window is titled **Presence Control — Rust**. The Slint app uses its own `%APPDATA%\dev.presence.control.rust.slint` data directory.
 
-The automated checks already cover 69 Rust tests and 52 native callback/workflow checks. These manual checks cover actual input, Windows dialogs, and real Discord behavior.
+The automated checks already cover 85 Rust tests and 72 native callback/workflow checks. These manual checks cover actual input, Windows dialogs, and real Discord behavior.
 
 ## 1. Window and keyboard
 
@@ -54,8 +54,9 @@ The automated checks already cover 69 Rust tests and 52 native callback/workflow
 - Enable recording during a confirmed automatic presence. It should accumulate application time; a manually started presence should not add recorded application time.
 - Stop, disable recording, disconnect Discord, and switch matching applications. Confirm that time pauses or begins a new session appropriately.
 - Archive a completed session: cumulative time should remain. Delete a completed session: cumulative time should also remain.
-- Archive an application total: its saved snapshot should enter the archive and future recording should start a fresh total.
-- Test event/session/total expansion and archive/delete controls. Active recording entries should be protected until recording pauses.
+- Archive an application total while recording: its row and cumulative time should remain in Application time, marked In Archive. Finish the recording, then record another session; the same Archive entry should update after each session, while individual archived sessions stay fixed. Repeated Archive actions should not create duplicates.
+- Delete an application total after pausing recording: its row should disappear and the saved archive value should remain. A later recording starts a fresh total and leaves that saved value fixed. Delete an archived application total separately: Application time should remain and the archive should stop updating.
+- Test event/session/total expansion and archive/delete controls. Deleting the active total and managing an unfinished session should require recording to pause; archiving a live application total is allowed.
 - Restart and confirm recorded history and archived entries persist. Recent unarchived event logs are intentionally kept only in memory.
 
 ## 7. Native import/export dialogs

@@ -1,5 +1,6 @@
 //! Regressions at the actual host/UI boundary, without network or real-time waits.
 use super::*;
+use presence_core::model::{Recording, UsageSession};
 use slint::platform::{
     software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     Platform, PlatformError, WindowAdapter,
@@ -19,6 +20,100 @@ impl Platform for TestPlatform {
     fn duration_since_start(&self) -> Duration {
         self.elapsed.get()
     }
+}
+
+#[test]
+fn activity_clock_updates_live_totals_and_moves_only_finished_sessions_into_history() {
+    slint::platform::set_platform(Box::new(TestPlatform {
+        window: MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer),
+        elapsed: Rc::new(Cell::new(Duration::ZERO)),
+    }))
+    .unwrap();
+    let ui = MainWindow::new().unwrap();
+    let executor = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (sender, _commands) = unbounded_channel();
+    let (updates, _receiver) = mpsc::channel();
+    let mut host = Host {
+        editor: Editor::new(Config::default()),
+        runtime: RuntimeState::default(),
+        sender,
+        updates,
+        executor: executor.handle().clone(),
+        pending: None,
+        rule: None,
+        resume_after_save: false,
+        shutting_down: false,
+        artwork: HashMap::new(),
+        artwork_requests: HashMap::new(),
+        artwork_retry_after: HashMap::new(),
+        notification_timer: slint::Timer::default(),
+    };
+    host.runtime.usage_totals.insert("editor".into(), 10_000);
+    host.runtime.usage_sessions = vec![
+        UsageSession {
+            id: "active".into(),
+            rule_id: "editor".into(),
+            name: "Editor".into(),
+            process: "Code.exe".into(),
+            started_at: 1_000,
+            ended_at: 3_000,
+            duration_ms: 2_000,
+            ..UsageSession::default()
+        },
+        UsageSession {
+            id: "completed".into(),
+            duration_ms: 8_000,
+            ..UsageSession::default()
+        },
+    ];
+    host.runtime.recording = Some(Recording {
+        session_id: "active".into(),
+        rule_id: "editor".into(),
+        since: 3_000,
+    });
+    host.refresh_at(&ui, 8_000);
+    let total = ui.get_totals().row_data(0).unwrap();
+    assert_eq!(total.time, "0:00:15");
+    assert_eq!(total.subtitle, "Recording now · This session 0:00:07");
+    assert!(total.locked);
+    assert_eq!(ui.get_sessions().row_count(), 1);
+    let completed = ui.get_sessions().row_data(0).unwrap();
+    assert_eq!(completed.id, "completed");
+
+    // No backend snapshot arrives between these clock ticks.
+    host.refresh_at(&ui, 9_000);
+    assert_eq!(ui.get_totals().row_data(0).unwrap().time, "0:00:16");
+    assert_eq!(ui.get_sessions().row_data(0).unwrap(), completed);
+
+    // A persisted checkpoint advances the baseline without counting twice.
+    host.runtime.usage_totals.insert("editor".into(), 16_000);
+    host.runtime.usage_sessions[0].duration_ms = 8_000;
+    host.runtime.usage_sessions[0].ended_at = 9_000;
+    host.runtime.recording.as_mut().unwrap().since = 9_000;
+    host.refresh_at(&ui, 10_000);
+    let total = ui.get_totals().row_data(0).unwrap();
+    assert_eq!(total.time, "0:00:17");
+    assert_eq!(total.subtitle, "Recording now · This session 0:00:09");
+    assert_eq!(ui.get_sessions().row_count(), 1);
+
+    host.runtime.usage_totals.insert("editor".into(), 17_500);
+    host.runtime.usage_sessions[0].duration_ms = 9_500;
+    host.runtime.usage_sessions[0].ended_at = 10_500;
+    host.runtime.recording = None;
+    host.refresh_at(&ui, 10_500);
+    assert_eq!(ui.get_sessions().row_count(), 2);
+    let finished = ui.get_sessions().row_data(0).unwrap();
+    assert_eq!(finished.id, "active");
+    assert_eq!(finished.time, "0:00:09");
+    assert!(!finished.locked);
+    assert!(!ui.get_totals().row_data(0).unwrap().locked);
+    host.refresh_at(&ui, 70_000);
+    assert_eq!(ui.get_totals().row_data(0).unwrap().time, "0:00:17");
+    assert_eq!(ui.get_sessions().row_data(0).unwrap(), finished);
+    assert_eq!(ui.get_sessions().row_count(), 2);
 }
 
 #[test]

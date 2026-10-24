@@ -192,6 +192,104 @@ impl State {
         storage::read_config_import(&self.root.join("config.json"))
     }
 
+    /// Exercise live and completed projections in the native renderer with
+    /// synthetic data only. The backend and its persisted usage stay untouched.
+    fn activity_recording(
+        &mut self,
+        ui: &MainWindow,
+        host: &Rc<RefCell<Host>>,
+    ) -> Result<(), String> {
+        let saved_runtime = host.borrow().runtime.clone();
+        let result = (|| {
+            let now = now_ms();
+            {
+                let mut host = host.borrow_mut();
+                host.runtime
+                    .usage_totals
+                    .insert("smoke-live".into(), 3_661_000);
+                host.runtime
+                    .usage_totals
+                    .insert("smoke-short".into(), 15_000);
+                host.runtime.usage_sessions.insert(
+                    0,
+                    UsageSession {
+                        id: "smoke-live-session".into(),
+                        rule_id: "smoke-live".into(),
+                        name: "Microsoft® Windows® Operating System".into(),
+                        process: "ApplicationFrameHost.exe".into(),
+                        started_at: now - 10_000,
+                        ended_at: now - 2_000,
+                        duration_ms: 8_000,
+                        ..UsageSession::default()
+                    },
+                );
+                host.runtime.usage_sessions.push(UsageSession {
+                    id: "smoke-short-session".into(),
+                    rule_id: "smoke-short".into(),
+                    name: "App".into(),
+                    process: "app.exe".into(),
+                    started_at: now - 60_000,
+                    ended_at: now - 45_000,
+                    duration_ms: 15_000,
+                    ..UsageSession::default()
+                });
+                host.runtime.recording = Some(Recording {
+                    session_id: "smoke-live-session".into(),
+                    rule_id: "smoke-live".into(),
+                    since: now - 2_000,
+                });
+                host.refresh_at(ui, now);
+            }
+            let live = || {
+                ui.get_totals()
+                    .iter()
+                    .find(|row| row.id == "smoke-live")
+                    .unwrap()
+            };
+            self.check(
+                live().time == "1:01:03" && live().locked,
+                "Application time includes the current live interval",
+            )?;
+            self.check(
+                ui.get_sessions()
+                    .iter()
+                    .all(|row| row.id != "smoke-live-session"),
+                "Previous sessions excludes the active recording",
+            )?;
+            self.snapshot(ui, "activity-recording")?;
+            host.borrow_mut().refresh_at(ui, now + 1_000);
+            self.check(
+                live().time == "1:01:04" && live().subtitle.ends_with("0:00:11"),
+                "Live total and session clocks advance without a backend checkpoint",
+            )?;
+            {
+                let mut host = host.borrow_mut();
+                host.runtime
+                    .usage_totals
+                    .insert("smoke-live".into(), 3_664_000);
+                host.runtime.usage_sessions[0].duration_ms = 11_000;
+                host.runtime.usage_sessions[0].ended_at = now + 1_000;
+                host.runtime.recording = None;
+                host.refresh_at(ui, now + 1_000);
+            }
+            self.check(
+                ui.get_sessions().iter().any(|row| {
+                    row.id == "smoke-live-session" && row.time == "0:00:11" && !row.locked
+                }),
+                "Finished recording appears in Previous sessions with its final duration",
+            )?;
+            host.borrow_mut().refresh_at(ui, now + 60_000);
+            self.check(
+                live().time == "1:01:04" && !live().locked,
+                "Finished application time stops advancing",
+            )?;
+            self.snapshot(ui, "activity-finished")
+        })();
+        host.borrow_mut().runtime = saved_runtime;
+        host.borrow_mut().refresh(ui);
+        result
+    }
+
     fn guard_root(&self) -> Result<(), String> {
         let marker =
             fs::read_to_string(self.folder.join("SMOKE-WORKSPACE")).map_err(|e| e.to_string())?;
@@ -652,6 +750,7 @@ impl State {
             }
             22 => {
                 self.snapshot(ui, "activity")?;
+                self.activity_recording(ui, host)?;
                 ui.set_page(3);
             }
             23 => {
@@ -716,17 +815,27 @@ impl State {
             }
             29 => {
                 self.check(
-                    !host.borrow().runtime.usage_totals.contains_key(STORED_RULE),
-                    "Archiving a total resets the live cumulative total",
+                    host.borrow().runtime.usage_totals.get(STORED_RULE) == Some(&12_000),
+                    "Archiving an application keeps its cumulative total in Application time",
                 )?;
                 self.check(
                     host.borrow()
                         .runtime
                         .archive
                         .iter()
-                        .any(|e| e.kind == "application" && e.entry["durationMs"] == 12_000),
-                    "Archived totals retain their saved duration",
+                        .any(|e| e.tracks_application_time() && e.entry["durationMs"] == 12_000),
+                    "Archived application totals subscribe to completed recording updates",
                 )?;
+                self.check(
+                    ui.get_totals()
+                        .iter()
+                        .any(|row| row.id == STORED_RULE && row.tracked),
+                    "Application time marks a linked archive and prevents duplicate archiving",
+                )?;
+                ui.set_page(2);
+                self.snapshot(ui, "application-time-linked")?;
+                ui.set_page(3);
+                self.snapshot(ui, "archive-linked-total")?;
                 Self::action(ui, "delete-archived", "event:smoke-archived-event");
             }
             30 => {
@@ -864,6 +973,7 @@ impl State {
                 )?;
                 let expected_config = host.borrow().editor.config.clone();
                 let expected_archive = host.borrow().runtime.archive.clone();
+                let expected_totals = host.borrow().runtime.usage_totals.clone();
                 let executor = host.borrow().executor.clone();
                 let root = self.root.clone();
                 let (config, runtime, warnings) = executor.block_on(async move {
@@ -886,13 +996,52 @@ impl State {
                     "Reopened backend restores session, event, and total archives",
                 )?;
                 self.check(
-                    runtime.usage_sessions.is_empty() && runtime.usage_totals.is_empty(),
-                    "Archived history stays removed from live totals and sessions after restart",
+                    runtime.usage_sessions.is_empty()
+                        && runtime.usage_totals == expected_totals
+                        && runtime.usage_totals.get(STORED_RULE) == Some(&12_000),
+                    "Linked application totals and archived session removal survive restart",
+                )?;
+                Self::action(ui, "delete-activity", &format!("application:{STORED_RULE}"));
+            }
+            41 => {
+                self.check(
+                    !host.borrow().runtime.usage_totals.contains_key(STORED_RULE)
+                        && ui.get_totals().row_count() == 0,
+                    "Delete removes the Application time row",
+                )?;
+                self.check(
+                    host.borrow().runtime.archive.iter().any(|item| {
+                        item.kind == "application"
+                            && !item.tracks_application_time()
+                            && item.entry["durationMs"] == 12_000
+                    }),
+                    "Deleting Application time retains its final saved archive",
+                )?;
+                ui.set_page(2);
+                self.snapshot(ui, "application-time-deleted")?;
+            }
+            42 => {
+                let executor = host.borrow().executor.clone();
+                let root = self.root.clone();
+                let runtime = executor.block_on(async move {
+                    let (reopened, _) = Backend::open(&root, Arc::new(|_| {})).await;
+                    let runtime = reopened.runtime().await;
+                    reopened.shutdown().await?;
+                    Ok::<_, String>(runtime)
+                })?;
+                self.check(
+                    runtime.usage_totals.is_empty()
+                        && runtime.archive.iter().any(|item| {
+                            item.kind == "application"
+                                && !item.tracks_application_time()
+                                && item.entry["durationMs"] == 12_000
+                        }),
+                    "Restart preserves deleted application totals and their detached archive",
                 )?;
                 crate::notify(ui, &host.borrow().notification_timer, "Presence stopped.");
                 self.notification_started = Some(Instant::now());
             }
-            41 => {
+            43 => {
                 if self.notification_started.unwrap().elapsed() < Duration::from_millis(5300) {
                     return Ok(());
                 }

@@ -86,3 +86,49 @@ async fn failed_shutdown_preserves_worker_and_retry_persists_pending_history_cle
         "session archive preserves totals"
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_linked_archive_shutdown_can_retry_without_losing_the_saved_total() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(
+        root.path().join("usage.json"),
+        serde_json::to_vec(&json!({
+            "totals":{"editor":20000}, "sessions":[], "totalIds":{"editor":"total"}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let archive_path = root.path().join("archive.json");
+    std::fs::write(&archive_path, serde_json::to_vec(&json!({"entries":[{
+        "kind":"application", "archivedAt":1000, "tracksApplicationTime":true,
+        "entry":{"id":"total","ruleId":"editor","name":"Editor","process":"Code.exe","durationMs":10000}
+    }]})).unwrap()).unwrap();
+    let (backend, warnings) = Backend::open(root.path(), Arc::new(|_| {})).await;
+    assert!(warnings.is_empty());
+    // Block the pending archive repair before allowing any scheduled work.
+    std::fs::remove_file(&archive_path).unwrap();
+    std::fs::create_dir(&archive_path).unwrap();
+    let (updates, receiver) = mpsc::channel();
+    let (sender, commands) = unbounded_channel();
+    let task = tokio::spawn(worker(backend, commands, updates));
+    sender.send(Command::Shutdown).unwrap();
+    assert!(shutdown_result(&receiver)
+        .await
+        .unwrap_err()
+        .contains("Could not replace local data"));
+    assert!(
+        !task.is_finished(),
+        "archive failures must retain the worker for retry"
+    );
+    std::fs::remove_dir(&archive_path).unwrap();
+    sender.send(Command::Shutdown).unwrap();
+    shutdown_result(&receiver).await.unwrap();
+    task.await.unwrap();
+    let archive: presence_core::model::ArchiveData =
+        serde_json::from_slice(&std::fs::read(&archive_path).unwrap()).unwrap();
+    assert_eq!(archive.entries[0].entry["durationMs"], 20_000);
+    assert!(archive.entries[0].tracks_application_time());
+    let usage: UsageData =
+        serde_json::from_slice(&std::fs::read(root.path().join("usage.json")).unwrap()).unwrap();
+    assert_eq!(usage.totals["editor"], 20_000);
+}
