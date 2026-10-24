@@ -176,6 +176,18 @@ impl Editor {
         validated(next)
     }
 
+    /// Going live saves a pending global ID when this presence inherits it.
+    /// A profile override remains independent of unrelated Settings edits.
+    pub fn candidate_activate(&self, global_id_draft: &str) -> Result<Config, String> {
+        let mut next = self.candidate_save()?;
+        if self.draft.application_id.is_empty() {
+            next.application_id = global_id_draft.trim().into();
+        }
+        let next = validated(next)?;
+        engine::validate_profile(&self.draft, true, &next.application_id)?;
+        Ok(next)
+    }
+
     /// New/duplicate also saves the current draft, matching the inherited studio.
     pub fn candidate_new(&self) -> Result<(Config, String), String> {
         self.candidate_add(false)
@@ -722,6 +734,53 @@ mod tests {
         editor.accept(candidate, None);
         assert!(!editor.dirty());
         assert_eq!(editor.draft.details, "Still editing");
+    }
+
+    #[test]
+    fn activation_saves_pending_global_id_and_profile_edits_together() {
+        let mut editor = editor();
+        editor.set_field("details", "Ready to publish").unwrap();
+        let original = editor.config.clone();
+        let id = "1562501049397411983";
+        let candidate = editor.candidate_activate(&format!("  {id}  ")).unwrap();
+        assert_eq!(candidate.application_id, id);
+        assert_eq!(candidate.profiles[0].details, "Ready to publish");
+        assert!(candidate.profiles[0].application_id.is_empty());
+        assert_eq!(editor.config, original, "wait for successful persistence");
+        editor.accept(candidate, Some("creative-flow"));
+        assert!(!editor.dirty());
+        assert_eq!(
+            editor
+                .preview(&initial_runtime(), 0)
+                .effective_application_id,
+            id
+        );
+        assert!(editor.candidate_activate(id).is_ok());
+
+        let replacement = "987654321098765432";
+        let candidate = editor.candidate_activate(replacement).unwrap();
+        assert_eq!(candidate.application_id, replacement);
+        assert_eq!(editor.config.application_id, id);
+    }
+
+    #[test]
+    fn invalid_global_edits_do_not_mutate_config_or_block_profile_overrides() {
+        let mut editor = editor();
+        editor.config.application_id = "1562501049397411983".into();
+        let original = editor.config.clone();
+        for id in ["", "invalid", "123"] {
+            assert!(editor.candidate_activate(id).is_err());
+            assert_eq!(editor.config, original);
+        }
+        editor
+            .set_field("applicationId", "987654321098765432")
+            .unwrap();
+        for id in ["", "invalid", "123", "876543210987654321"] {
+            let candidate = editor.candidate_activate(id).unwrap();
+            assert_eq!(candidate.application_id, original.application_id);
+            assert_eq!(candidate.profiles[0].application_id, "987654321098765432");
+        }
+        assert_eq!(editor.config, original);
     }
 
     #[test]

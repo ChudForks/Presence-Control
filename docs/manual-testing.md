@@ -9,6 +9,7 @@ The automated checks already cover 69 Rust tests and 52 native callback/workflow
 - Launch normally: the whole window, title bar, and Go live button should fit above the taskbar.
 - Maximize, restore, minimize, and resize. Try approximately 1040×720 and 800×620. Profile cards should scroll horizontally when needed; the form body should scroll while its actions stay visible. On narrower windows the preview moves below the editor.
 - Click fields and enter text. Try long text, selection, Ctrl+A, copy/paste, Tab and Shift+Tab.
+- Use single clicks to switch sidebar pages, select presences and editor tabs, press buttons, toggle switches, and open/select dropdowns. Switching between controls should take focus and activate the control in the same click. Check Space/Enter and tab arrow keys after clicking too.
 - Open activity-type and profile dropdowns. Check mouse selection, arrow keys, and Escape. Check Escape on confirmation dialogs too.
 
 ## 2. Profile lifecycle and unsaved edits
@@ -32,6 +33,8 @@ The automated checks already cover 69 Rust tests and 52 native callback/workflow
 - Save a public Application ID in Settings, open Discord desktop with activity sharing enabled, and select Go live.
 - Verify the actual profile's display text, activity type, artwork, timer/progress, and buttons from another Discord account if possible. Discord may hide your own buttons from you.
 - Test a per-profile Application ID override, then clear it to inherit the global ID.
+- Enter a global ID in Settings without saving, leave the profile override blank, and select Go live. The ID should be saved and used for Discord; reopening the app should retain it. The Connection tab should show saved values and identify pending Settings edits.
+- Enter an invalid global ID draft while a profile has a valid override. Going live with the override should still work, and the unrelated Settings draft should remain unsaved.
 - Stop presence: the Discord activity should clear and automatic mode should turn off.
 - Close/reopen Discord while live and check the connection/error feedback and ability to go live again.
 

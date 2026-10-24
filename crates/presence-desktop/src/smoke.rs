@@ -666,6 +666,91 @@ impl State {
                     !self.config()?.record_time,
                     "Disabling recording preserves archived history",
                 )?;
+                ui.set_page(4);
+                Self::action(ui, "edit-global-id", "invalid");
+                Self::action(ui, "save-global-id", "");
+            }
+            35 => {
+                self.check(
+                    ui.get_message().contains("17–20 digits")
+                        && ui.get_global_id().is_empty()
+                        && ui.get_global_id_draft() == "invalid"
+                        && ui.get_global_id_dirty(),
+                    "Invalid global ID saves retain the draft without changing the saved ID",
+                )?;
+                Self::action(ui, "edit-global-id", " 1562501049397411983 ");
+                self.check(
+                    ui.get_global_id().is_empty()
+                        && host.borrow().editor.config.application_id.is_empty(),
+                    "Typing a global ID does not display it as a saved connection setting",
+                )?;
+                Self::edit(ui, host, "details", "Profile draft survives Settings save");
+                Self::action(ui, "save-global-id", "");
+            }
+            36 => {
+                self.check(
+                    self.config()?.application_id == "1562501049397411983"
+                        && ui.get_global_id() == "1562501049397411983"
+                        && ui.get_global_id_draft() == "1562501049397411983"
+                        && !ui.get_global_id_dirty(),
+                    "Saving the global ID persists and normalizes the Settings field and connection label",
+                )?;
+                self.check(
+                    host.borrow().editor.dirty()
+                        && host.borrow().editor.draft.details == "Profile draft survives Settings save"
+                        && host.borrow().editor.draft.application_id.is_empty()
+                        && host.borrow().editor.preview(&host.borrow().runtime, now_ms()).effective_application_id == "1562501049397411983",
+                    "Settings save preserves profile edits and blank overrides inherit the saved global ID",
+                )?;
+                Self::action(ui, "discard-changes", "");
+                Self::action(ui, "edit-global-id", "987654321098765432");
+                Self::action(ui, "toggle-recording", "");
+            }
+            37 => {
+                self.check(
+                    ui.get_global_id() == "1562501049397411983"
+                        && ui.get_global_id_draft() == "987654321098765432"
+                        && ui.get_global_id_dirty(),
+                    "Unrelated workspace saves preserve pending global ID edits",
+                )?;
+                Self::action(ui, "toggle-recording", "");
+            }
+            38 => {
+                self.guard_root()?;
+                fs::rename(
+                    self.root.join("config.json"),
+                    self.root.join("smoke-saved-config.json"),
+                )
+                .map_err(|e| e.to_string())?;
+                self.fault_active = true;
+                fs::create_dir(self.root.join("config.json")).map_err(|e| e.to_string())?;
+                // Persistence must fail before activation can reach real Discord.
+                Self::action(ui, "activate", "");
+                self.check(
+                    ui.get_busy(),
+                    "Go live accepts the pending global ID for an inherited presence",
+                )?;
+            }
+            39 => {
+                self.check(
+                    ui.get_message().contains("Could not")
+                        && ui.get_global_id() == "1562501049397411983"
+                        && ui.get_global_id_draft() == "987654321098765432"
+                        && ui.get_global_id_dirty()
+                        && host.borrow().runtime.connection == "disconnected",
+                    "Failed Go live persistence retains pending global ID edits and does not connect to Discord",
+                )?;
+                self.restore_fault()?;
+                Self::action(ui, "save-global-id", "");
+            }
+            40 => {
+                self.check(
+                    self.config()?.application_id == "987654321098765432"
+                        && ui.get_global_id() == "987654321098765432"
+                        && !ui.get_global_id_dirty()
+                        && host.borrow().editor.candidate_activate(&ui.get_global_id_draft()).is_ok(),
+                    "Retry saves the global ID and the inherited presence passes Go live validation",
+                )?;
                 let expected_config = host.borrow().editor.config.clone();
                 let expected_archive = host.borrow().runtime.archive.clone();
                 let executor = host.borrow().executor.clone();

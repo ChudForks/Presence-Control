@@ -36,8 +36,8 @@ component NavItem inherits Rectangle {
         if !compact: Text { text: root.text; color: root.selected ? #f2f2f2 : #a3a3a3; font-size: 13px; font-weight: root.selected ? 600 : 500; vertical-alignment: center; horizontal-stretch: 1; }
         if !compact && count != "": Rectangle { width: 20px; height: 20px; border-radius: 4px; border-width: 1px; border-color: #333333; background: #222222; Text { text: root.count; color: #cccccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } }
     }
-    nav-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
-    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; } return reject; } }
+    nav-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
+    focus := FocusScope { enabled: root.enabled; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; } return reject; } }
     forward-focus: focus;
 }
 
@@ -207,7 +207,9 @@ export component MainWindow inherits Window {
     in-out property <int> editor-tab: 0;
     in-out property <ProfileForm> form;
     in-out property <RuleForm> rule-form;
-    in-out property <string> global-id;
+    in property <string> global-id;
+    in-out property <string> global-id-draft;
+    out property <bool> global-id-dirty: root.global-id-draft != root.global-id;
     in-out property <string> search;
     in-out property <bool> automatic;
     in-out property <bool> record-time;
@@ -330,8 +332,8 @@ export component MainWindow inherits Window {
                                     VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: profile.title; color: #eeeeee; font-size: 13px; font-weight: 600; overflow: elide; } Text { text: profile.subtitle; color: #818181; font-size: 11px; overflow: elide; } }
                                     Text { width: 16px; text: profile.selected ? "✓" : "›"; color: profile.selected ? #dddddd : #777777; font-size: 17px; vertical-alignment: center; }
                                 }
-                                TouchArea { enabled: root.modal == ""; mouse-cursor: pointer; clicked => { root.action("select-profile", profile.id); } }
-                                card-focus := FocusScope { enabled: root.modal == ""; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.action("select-profile", profile.id); return accept; } return reject; } }
+                                TouchArea { enabled: root.modal == ""; mouse-cursor: pointer; clicked => { card-focus.focus(); root.action("select-profile", profile.id); } }
+                                card-focus := FocusScope { enabled: root.modal == ""; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.action("select-profile", profile.id); return accept; } return reject; } }
                                 forward-focus: card-focus;
                             }
                             if root.profiles.length == 0: Text { text: "No presences match your search."; color: #818181; font-size: 12px; vertical-alignment: center; }
@@ -368,8 +370,8 @@ export component MainWindow inherits Window {
                                         accessible-action-default => { if root.modal == "" { root.editor-tab = index; } }
                                         HorizontalLayout { cross-axis-alignment: center; spacing: 7px; Glyph { name: index == 0 ? "code" : index == 1 ? "image" : index == 2 ? "link" : "plug"; width: 14px; height: 14px; colorize: root.editor-tab == index ? #ededed : #818181; } tab-text := Text { text: tab; color: root.editor-tab == index ? #eeeeee : #818181; font-size: 11px; vertical-alignment: center; } }
                                         if root.editor-tab == index: Rectangle { y: parent.height - 2px; height: 2px; width: parent.width; background: #eeeeee; }
-                                        TouchArea { enabled: root.modal == ""; mouse-cursor: pointer; clicked => { root.editor-tab = index; } }
-                                        tab-focus := FocusScope { enabled: root.modal == ""; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.editor-tab = index; return accept; } if event.text == Key.RightArrow { root.editor-tab = min(3, index + 1); return accept; } if event.text == Key.LeftArrow { root.editor-tab = max(0, index - 1); return accept; } return reject; } }
+                                        TouchArea { enabled: root.modal == ""; mouse-cursor: pointer; clicked => { tab-focus.focus(); root.editor-tab = index; } }
+                                        tab-focus := FocusScope { enabled: root.modal == ""; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.editor-tab = index; return accept; } if event.text == Key.RightArrow { root.editor-tab = min(3, index + 1); return accept; } if event.text == Key.LeftArrow { root.editor-tab = max(0, index - 1); return accept; } return reject; } }
                                         forward-focus: tab-focus;
                                     }
                                 }
@@ -454,6 +456,7 @@ export component MainWindow inherits Window {
                                     spacing: 23px;
                                     SectionTitle { title: "Your connection to Discord"; description: "Use your global application ID, or choose another for this presence."; }
                                     Note { text: root.global-id == "" ? "Set a global application ID to use across your presences in Settings." : "Global application ID: " + root.global-id; icon: "plug"; }
+                                    if root.global-id-dirty: Note { text: "The global application ID has unsaved changes in Settings. Go live saves them when this presence uses the global ID."; }
                                     UiButton { enabled: root.modal == ""; text: "Open Settings  →"; clicked => { root.page = 4; } }
                                     Field { enabled: root.modal == ""; label: "Discord application ID override (optional)"; hint: "Leave blank to use the global ID. Override for a different Discord application or its uploaded artwork."; value <=> root.form.application-id; placeholder: "Use global application ID"; edited(value) => { root.field-edited("applicationId", value); } }
                                     Text { text: "1    Create an application in the Discord Developer Portal.\n\n2    Copy its Application ID from General Information and save it in Settings.\n\n3    Open Discord desktop, save this presence, and go live. Enable activity sharing in Discord's settings."; color: #a3a3a3; font-size: 12px; wrap: word-wrap; }
@@ -546,8 +549,9 @@ export component MainWindow inherits Window {
                     settings-content := VerticalLayout {
                         padding: 24px; spacing: 22px;
                         SectionTitle { title: "Discord connection"; description: "Set one application ID for all your presences. Individual presences can optionally override it in Connection."; }
-                        Field { label: "Global Discord application ID"; hint: "Use the public Application ID from the Discord Developer Portal."; value <=> root.global-id; placeholder: "e.g. 123456789012345678"; enabled: root.modal == "" && !root.busy; edited(value) => { root.action("edit-global-id", value); } }
-                        HorizontalLayout { cross-axis-alignment: center; spacing: 12px; alignment: start; UiButton { text: "Save application ID"; icon: "check"; primary: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("save-global-id", ""); } } UiButton { enabled: root.modal == ""; text: "Open Developer Portal"; icon: "external"; clicked => { root.action("developer-portal", ""); } } }
+                        Field { label: "Global Discord application ID"; hint: "Use the public Application ID from the Discord Developer Portal."; value <=> root.global-id-draft; placeholder: "e.g. 123456789012345678"; enabled: root.modal == "" && !root.busy; edited(value) => { root.action("edit-global-id", value); } }
+                        HorizontalLayout { cross-axis-alignment: center; spacing: 12px; alignment: start; UiButton { text: "Save application ID"; icon: "check"; primary: true; enabled: root.modal == "" && !root.busy && root.global-id-dirty; clicked => { root.action("save-global-id", ""); } } UiButton { enabled: root.modal == ""; text: "Open Developer Portal"; icon: "external"; clicked => { root.action("developer-portal", ""); } } }
+                        if root.global-id-dirty: Text { text: "Unsaved application ID. Save it here, or go live with a presence that uses the global ID."; color: #dcba7f; font-size: 11px; wrap: word-wrap; }
                         Note { text: "One ID is enough for custom names, text, timers, and buttons. Separate IDs are useful when presences need different Discord applications or uploaded artwork libraries."; }
                     }
                 }

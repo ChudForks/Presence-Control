@@ -2,6 +2,8 @@
 mod artwork;
 mod editor;
 mod native;
+#[cfg(test)]
+mod pointer_tests;
 mod smoke;
 #[cfg(test)]
 mod worker_tests;
@@ -198,6 +200,7 @@ impl Host {
         ui.set_form(profile_form(&self.editor.draft));
     }
     fn refresh(&mut self, ui: &MainWindow) {
+        ui.set_global_id(self.editor.config.application_id.clone().into());
         let query = ui.get_search().to_lowercase();
         ui.set_profiles(sync_model(
             ui.get_profiles(),
@@ -492,7 +495,7 @@ impl Host {
         let result: Result<(), String> = (|| {
             match action {
                 "search" => ui.set_search(argument.into()),
-                "edit-global-id" => ui.set_global_id(argument.into()),
+                "edit-global-id" => ui.set_global_id_draft(argument.into()),
                 "dismiss-message" => ui.set_message("".into()),
                 "select-profile" => {
                     if argument != self.editor.draft.id {
@@ -527,10 +530,11 @@ impl Host {
                     ui.set_modal("".into());
                 }
                 "save-profile" | "activate" | "save-and-continue" => {
-                    let config = self.editor.candidate_save()?;
-                    if action == "activate" {
-                        engine::validate_profile(&self.editor.draft, true, &config.application_id)?;
-                    }
+                    let config = if action == "activate" {
+                        self.editor.candidate_activate(&ui.get_global_id_draft())?
+                    } else {
+                        self.editor.candidate_save()?
+                    };
                     if action == "save-and-continue" {
                         self.resume_after_save = true;
                     }
@@ -567,7 +571,7 @@ impl Host {
                 }
                 "save-global-id" => {
                     let mut config = self.editor.config.clone();
-                    config.application_id = ui.get_global_id().trim().into();
+                    config.application_id = ui.get_global_id_draft().trim().into();
                     self.save(
                         ui,
                         config,
@@ -810,7 +814,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if smoke_root.is_none() {
         native::place_initial_window(ui.window());
     }
-    ui.set_global_id(config.application_id.clone().into());
+    ui.set_global_id_draft(config.application_id.clone().into());
     ui.set_data_path(root.display().to_string().into());
     ui.set_message(warnings.join("\n").into());
     let host = Rc::new(RefCell::new(Host {
@@ -908,8 +912,10 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Update::Saved { config, selected } => {
                     let old_id = host.editor.config.application_id.clone();
                     host.editor.accept(*config, selected.as_deref());
-                    if old_id != host.editor.config.application_id {
-                        ui.set_global_id(host.editor.config.application_id.clone().into());
+                    if old_id != host.editor.config.application_id
+                        || ui.get_global_id_draft().trim() == host.editor.config.application_id
+                    {
+                        ui.set_global_id_draft(host.editor.config.application_id.clone().into());
                     }
                     if selected.is_some() { host.refresh_form(&ui); }
                     changed = true;

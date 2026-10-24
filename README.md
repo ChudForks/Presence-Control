@@ -22,7 +22,7 @@ cargo build --release -p presence-desktop
 
 The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in `C:/Users/Jonathan/AppData/Local/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
 
-A built portable copy is available in this checkout at **`release/presence-control.exe`**. Close the isolated test window before launching it for normal use.
+A built portable copy with the global application ID and single-click input fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
 
 The build embeds the application icon. Closing the window saves recorded time and disconnects Discord; there is no background tray mode.
 
@@ -36,6 +36,8 @@ The [manual testing checklist](docs/manual-testing.md) covers real Discord, Wind
 2. Open **Settings** and save the public **Application ID**. A profile can supply an optional override in its **Connection** tab.
 3. Edit a presence's display name, activity type, details, state, artwork, and optional buttons, then save it.
 4. Open Discord desktop with activity sharing enabled and select **Go live**.
+
+Settings marks unsaved application ID edits. **Go live** also saves a pending global ID when the presence has no override; the Connection tab displays the saved global ID. A presence with its own override keeps using that override independently of pending Settings edits.
 
 Profiles support Playing, Listening to, Watching, and Competing in activity types, elapsed timers, manually configured playback durations, artwork asset keys or HTTPS image URLs, and up to two HTTP/HTTPS buttons. Media playback is not read or controlled.
 
@@ -90,7 +92,7 @@ cargo fmt --all -- --check
 cargo run -p presence-desktop -- --smoke-test
 ```
 
-The workspace test suite currently passes 69 tests, including the native Windows scan, Rust editor transitions, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, and bounded artwork pixels. The latest completed native smoke run passes 52 behavior checks. See [verification details](docs/verification.md) for the verified scope and remaining checks.
+The workspace test suite currently passes 72 tests, including first-click pointer input and keyboard focus, the native Windows scan, Rust editor transitions, global application ID activation, mock Discord IPC, archive/storage recovery, instance signaling, shutdown failure/retry, and bounded artwork pixels. See [verification details](docs/verification.md) for the latest native smoke results, verified scope, and remaining checks.
 
 The optional native smoke run opens the actual Slint window and exercises the Rust callback/backend path, then checks persisted data after reopening the backend. It always creates an isolated workspace beneath `artifacts/native-smoke/<run-id>/` and writes a JSON report and screenshots there. Normal application data is not used.
 

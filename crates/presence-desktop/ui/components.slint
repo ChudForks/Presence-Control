@@ -71,8 +71,8 @@ export component UiButton inherits Rectangle {
         if icon != "": Glyph { name: root.icon; colorize: root.primary ? #151515 : #a3a3a3; width: 15px; height: 15px; }
         Text { text: root.text; color: root.primary ? #151515 : #d5d5d5; font-size: root.compact ? 11px : 12px; font-weight: 600; vertical-alignment: center; }
     }
-    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
-    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
+    focus := FocusScope { enabled: root.enabled; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; } return reject; } }
     forward-focus: focus;
 }
 
@@ -93,8 +93,8 @@ export component IconButton inherits Rectangle {
     accessible-enabled: enabled;
     accessible-action-default => { if enabled { root.clicked(); } }
     Glyph { name: root.icon; x: 8px; y: 8px; width: 16px; height: 16px; }
-    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.clicked(); } }
-    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " || event.text == "\n" { root.clicked(); return accept; } return reject; } }
+    touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
+    focus := FocusScope { enabled: root.enabled; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; } return reject; } }
     forward-focus: focus;
 }
 
@@ -181,8 +181,8 @@ export component Toggle inherits Rectangle {
     accessible-checked: checked;
     accessible-action-default => { if enabled { root.toggled(); } }
     Rectangle { x: root.checked ? 17px : 3px; y: 4px; width: 12px; height: 12px; border-radius: 6px; background: root.checked ? #222222 : #888888; animate x { duration: 120ms; } }
-    TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { root.toggled(); } }
-    focus := FocusScope { enabled: root.enabled; key-pressed(event) => { if event.text == " " { root.toggled(); return accept; } return reject; } }
+    TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.toggled(); } }
+    focus := FocusScope { enabled: root.enabled; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space { root.toggled(); return accept; } return reject; } }
     forward-focus: focus;
 }
 
@@ -243,7 +243,7 @@ export component Choice inherits Rectangle {
     accessible-action-expand => { if root.enabled { menu.show(); } }
     Text { x: 13px; width: parent.width - 44px; height: parent.height; text: root.current-index >= 0 && root.current-index < root.options.length ? root.options[root.current-index] : "Choose a presence"; color: #eeeeee; font-size: 13px; vertical-alignment: center; overflow: elide; }
     Glyph { name: "down"; x: parent.width - 29px; y: 14px; width: 14px; height: 14px; }
-    choice-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { menu.show(); } }
+    choice-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); menu.show(); } }
     menu := PopupWindow {
         x: 0px; y: root.height + 4px;
         width: root.width;
@@ -281,6 +281,7 @@ export component Choice inherits Rectangle {
     }
     focus := FocusScope {
         enabled: root.enabled;
+        focus-on-click: false;
         key-pressed(event) => {
             if event.text == Key.Space || event.text == Key.Return { menu.show(); return accept; }
             if event.text == Key.DownArrow && root.options.length > 0 { root.current-index = min(root.options.length - 1, root.current-index + 1); root.selected(root.current-index); return accept; }
