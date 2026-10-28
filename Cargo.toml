@@ -6,6 +6,8 @@ resolver = "2"
 [patch.crates-io]
 # Keep the native renderer while fixing text rasterization for the entire UI.
 i-slint-renderer-software = { path = "vendor/i-slint-renderer-software" }
+# Backport Windows invalidation handling without changing the pinned Slint API.
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }
 
 [profile.release]
 codegen-units = 1

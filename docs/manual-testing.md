@@ -2,7 +2,7 @@
 
 Run `release/presence-control.exe`, or run `cargo run -p presence-desktop` from this repository. The new window is titled **Presence Control — Rust**. The Slint app uses its own `%APPDATA%\dev.presence.control.rust.slint` data directory.
 
-The automated checks already cover 85 Rust tests and 72 native callback/workflow checks. These manual checks cover actual input, Windows dialogs, and real Discord behavior.
+The automated checks already cover 89 Rust tests and 77 native callback/workflow checks. These manual checks cover actual input, Windows dialogs, and real Discord behavior.
 
 ## 1. Window and keyboard
 
@@ -11,6 +11,8 @@ The automated checks already cover 85 Rust tests and 72 native callback/workflow
 - Click fields and enter text. Try long text, selection, Ctrl+A, copy/paste, Tab and Shift+Tab.
 - Use single clicks to switch sidebar pages, select presences and editor tabs, press buttons, toggle switches, and open/select dropdowns. Switching between controls should take focus and activate the control in the same click. Check Space/Enter and tab arrow keys after clicking too.
 - Open activity-type and profile dropdowns. Check mouse selection, arrow keys, and Escape. Check Escape on confirmation dialogs too.
+- In **Settings → Appearance**, switch among **Dark**, **Light**, and **System** with the mouse and keyboard (Tab, Space/Enter, and arrow keys). The selected option should be clear; changes save automatically. Verify that Dark retains OLED black and Light has readable fields, buttons, previews, dropdowns, notifications, and dialogs on every page, including at 800×620.
+- Choose System, then change Windows' application color mode while the app is open. The UI should follow it. Explicit Dark and Light should stay fixed when Windows changes. Restart and export/import a workspace to verify the selected preference persists; an older workspace with no appearance field should load Dark. Theme changes should retain unsaved profile and application ID drafts.
 
 ## 2. Profile lifecycle and unsaved edits
 
@@ -71,4 +73,19 @@ The automated checks already cover 85 Rust tests and 72 native callback/workflow
 - Launch a second copy using the same data directory. It should bring the existing Slint window forward.
 - Close while an automatic presence is recording. Presence should disconnect, recorded time should checkpoint, and the process should exit. There is no tray/background mode.
 
+## 9. Windows installer
+
+- Run `release/Presence-Control-0.1.1-windows-x64-setup.exe`. Confirm the wizard icon, readable layout at your display scaling, welcome text, directory selection, progress, and finish page.
+- Keep the default per-user directory; installation should not ask for administrator privileges. Select the optional desktop shortcut, complete setup, and use the launch checkbox.
+- Start the installed app from both the Start menu and desktop shortcut. Confirm it opens the same saved workspace as the portable Rust/Slint app.
+- Leave the app open and rerun setup. Confirm setup requests that the app be closed; close it normally and select Retry. Confirm the saved workspace remains available after upgrade.
+- Remove **Presence Control (Rust)** through Windows Installed apps. Confirm the interactive removal, both shortcuts, and installed payload are removed, while `%APPDATA%\dev.presence.control.rust.slint` remains.
+- Reinstall and confirm the saved workspace and history return. A clean second PC check should also confirm the bundled runtime works without development tools installed.
+
 When reporting an issue, include the section/step, what you expected, what happened, and whether it survives a restart.
+
+## 10. Windows repaint regression (0.1.1)
+
+- After upgrading, move and snap the window along screen edges, minimize/restore it, and maximize/restore it. Previously drawn controls and backgrounds should return without transparent or stale blocks.
+- If multiple displays use different scaling, drag the window between them several times, including while holding the title bar near snap-preview edges. Let it rest on each display and confirm the whole client area remains painted.
+- Repeat the gesture that produced the reported corruption. The automated GDI invalidation probe covers the corrected repaint path, but these manual steps validate the original desktop gesture and monitor setup.

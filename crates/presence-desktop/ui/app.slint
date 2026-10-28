@@ -1,5 +1,5 @@
 import { ScrollView, Palette } from "std-widgets.slint";
-import { Typography, Glyph, UiButton, IconButton, Input, Field, SectionTitle, Toggle, Artwork, Note, Divider, Choice, EmptyState, PriorityHandle } from "components.slint";
+import { Colors, Typography, Glyph, UiButton, IconButton, Input, Field, SectionTitle, Toggle, Artwork, Note, Divider, Choice, EmptyState, PriorityHandle, ModeOption } from "components.slint";
 
 export struct ProfileRow { id: string, title: string, subtitle: string, theme: string, selected: bool, artwork: image, has-artwork: bool }
 export struct RuleRow { id: string, name: string, process: string, profile: string, enabled: bool }
@@ -23,18 +23,18 @@ component NavItem inherits Rectangle {
     callback clicked();
     height: 44px;
     border-radius: 8px;
-    background: selected ? #111111 : nav-touch.has-hover ? #0c0c0c : transparent;
+    background: selected ? Colors.raised : nav-touch.has-hover ? Colors.subtle-hover : transparent;
     border-width: selected ? 1px : 0px;
-    border-color: #262626;
+    border-color: Colors.line;
     accessible-role: button;
     accessible-label: text;
     accessible-enabled: enabled;
     accessible-action-default => { root.clicked(); }
     HorizontalLayout { cross-axis-alignment: center;
         padding-left: 13px; padding-right: 13px; spacing: 11px;
-        Glyph { name: root.icon; colorize: root.selected ? #ededed : #818181; }
-        if !compact: Text { text: root.text; color: root.selected ? #f2f2f2 : #a3a3a3; font-size: 13px; font-weight: root.selected ? Typography.selected-nav-weight : Typography.label-weight; vertical-alignment: center; horizontal-stretch: 1; }
-        if !compact && count != "": Rectangle { width: 20px; height: 20px; border-radius: 4px; border-width: 1px; border-color: #333333; background: #222222; Text { text: root.count; color: #cccccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } }
+        Glyph { name: root.icon; colorize: root.selected ? Colors.heading : Colors.muted; }
+        if !compact: Text { text: root.text; color: root.selected ? Colors.text : Colors.secondary; font-size: 13px; font-weight: root.selected ? Typography.selected-nav-weight : Typography.label-weight; vertical-alignment: center; horizontal-stretch: 1; }
+        if !compact && count != "": Rectangle { width: 20px; height: 20px; border-radius: 4px; border-width: 1px; border-color: Colors.strong-line; background: Colors.badge; Text { text: root.count; color: Colors.label; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } }
     }
     nav-touch := TouchArea { enabled: root.enabled; mouse-cursor: pointer; clicked => { focus.focus(); root.clicked(); } }
     focus := FocusScope { enabled: root.enabled; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.clicked(); return accept; } return reject; } }
@@ -51,7 +51,7 @@ component HistorySection inherits Rectangle {
     in-out property <bool> expanded: true;
     callback action(string,string);
     min-height: history-layout.preferred-height;
-    background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
+    background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
     history-layout := VerticalLayout {
         spacing: 0px;
         Rectangle {
@@ -61,10 +61,10 @@ component HistorySection inherits Rectangle {
                 VerticalLayout {
                     horizontal-stretch: 1; min-width: 0px;
                     spacing: 9px;
-                    Text { text: root.title; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; }
-                    if root.description != "": Text { text: root.description; color: #818181; font-size: 12px; wrap: word-wrap; }
+                    Text { text: root.title; color: Colors.heading; font-size: 15px; font-weight: Typography.title-weight; }
+                    if root.description != "": Text { text: root.description; color: Colors.muted; font-size: 12px; wrap: word-wrap; }
                 }
-                Text { text: root.entries.length + " entries"; width: 80px; horizontal-stretch: 0; color: #818181; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                Text { text: root.entries.length + " entries"; width: 80px; horizontal-stretch: 0; color: Colors.muted; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                 Glyph { name: root.expanded ? "down" : "arrow"; width: 15px; height: 15px; }
             }
             TouchArea { mouse-cursor: pointer; clicked => { root.expanded = !root.expanded; } }
@@ -74,22 +74,22 @@ component HistorySection inherits Rectangle {
             if root.entries.length == 0: Rectangle {
                 min-height: empty.preferred-height + 56px;
                 Divider { y: 0px; width: parent.width; }
-                empty := Text { x: 24px; y: 25px; width: parent.width - 48px; height: self.preferred-height; text: root.empty-text; color: #818181; font-size: 12px; wrap: word-wrap; }
+                empty := Text { x: 24px; y: 25px; width: parent.width - 48px; height: self.preferred-height; text: root.empty-text; color: Colors.muted; font-size: 12px; wrap: word-wrap; }
             }
             for entry in root.entries: entry-box := Rectangle {
                 in-out property <bool> entry-expanded: false;
                 height: self.entry-expanded ? 126px : 76px;
-                Divider { y: 0px; width: parent.width; background: #1b1b1b; }
+                Divider { y: 0px; width: parent.width; background: Colors.subtle-line; }
                 HorizontalLayout { cross-axis-alignment: center;
                     y: 0px; height: 76px; padding-left: 24px; padding-right: 20px; spacing: 14px;
-                    Rectangle { width: 36px; height: 36px; background: #151515; border-width: 1px; border-color: #262626; border-radius: 8px; Glyph { name: entry.kind == "event" ? "activity" : "clock"; x: 9px; y: 9px; } }
+                    Rectangle { width: 36px; height: 36px; background: Colors.popup; border-width: 1px; border-color: Colors.line; border-radius: 8px; Glyph { name: entry.kind == "event" ? "activity" : "clock"; x: 9px; y: 9px; } }
                     VerticalLayout {
                         horizontal-stretch: 1; min-width: 0px;
                         spacing: 5px; alignment: center;
-                        Text { text: entry.title; color: #d5d5d5; font-size: 12px; font-weight: Typography.title-weight; overflow: elide; }
-                        if entry.subtitle != "": Text { text: entry.subtitle; color: #818181; font-size: 11px; overflow: elide; }
+                        Text { text: entry.title; color: Colors.label; font-size: 12px; font-weight: Typography.title-weight; overflow: elide; }
+                        if entry.subtitle != "": Text { text: entry.subtitle; color: Colors.muted; font-size: 11px; overflow: elide; }
                     }
-                    Text { text: entry.time; width: 112px; horizontal-stretch: 0; color: #aaaaaa; font-family: "Consolas"; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
+                    Text { text: entry.time; width: 112px; horizontal-stretch: 0; color: Colors.secondary; font-family: "Consolas"; font-size: 11px; horizontal-alignment: right; vertical-alignment: center; }
                     HorizontalLayout {
                         width: 124px; horizontal-stretch: 0; spacing: 14px; alignment: end;
                         if !root.archived: IconButton { icon: "archive"; label: entry.tracked ? "Application time is in Archive" : "Archive entry"; enabled: !root.busy && !entry.tracked && (!entry.locked || entry.kind == "application"); clicked => { root.action("archive-activity", entry.kind + ":" + entry.id); } }
@@ -97,7 +97,7 @@ component HistorySection inherits Rectangle {
                         IconButton { icon: "down"; label: "Expand entry"; clicked => { entry-box.entry-expanded = !entry-box.entry-expanded; } }
                     }
                 }
-                if self.entry-expanded: Text { x: 74px; y: 77px; width: parent.width - 98px; height: self.preferred-height; text: entry.detail; color: #888888; font-size: 11px; wrap: word-wrap; }
+                if self.entry-expanded: Text { x: 74px; y: 77px; width: parent.width - 98px; height: self.preferred-height; text: entry.detail; color: Colors.muted; font-size: 11px; wrap: word-wrap; }
             }
         }
     }
@@ -125,12 +125,12 @@ component Preview inherits VerticalLayout {
     spacing: 14px;
     alignment: start;
     HorizontalLayout { cross-axis-alignment: center;
-        Text { text: "LIVE PREVIEW"; color: #b0b0b0; font-size: 10px; font-weight: Typography.caption-weight; letter-spacing: 1px; }
-        Text { text: "•  Updates as you type"; color: #818181; font-size: 10px; horizontal-alignment: right; }
+        Text { text: "LIVE PREVIEW"; color: Colors.secondary; font-size: 10px; font-weight: Typography.caption-weight; letter-spacing: 1px; }
+        Text { text: "•  Updates as you type"; color: Colors.muted; font-size: 10px; horizontal-alignment: right; }
     }
     Rectangle {
         height: profile-content.preferred-height + 188px; vertical-stretch: 0;
-        background: #111111; border-width: 1px; border-color: #333333; border-radius: 13px;
+        background: Colors.raised; border-width: 1px; border-color: Colors.strong-line; border-radius: 13px;
         Image {
             x: 1px; y: 1px; width: parent.width - 2px; height: 100px; image-fit: fill;
             // Rounded gradients and clips are baked into the SVG because the
@@ -138,62 +138,62 @@ component Preview inherits VerticalLayout {
             source: root.form.theme == "mint" ? @image-url("artwork/mint-banner.svg") : root.form.theme == "peach" ? @image-url("artwork/peach-banner.svg") : root.form.theme == "blue" ? @image-url("artwork/blue-banner.svg") : @image-url("artwork/violet-banner.svg");
         }
         Rectangle {
-            x: 19px; y: 65px; width: 70px; height: 70px; border-radius: 35px; background: #c8c8c8; border-width: 6px; border-color: #111111;
+            x: 19px; y: 65px; width: 70px; height: 70px; border-radius: 35px; background: #c8c8c8; border-width: 6px; border-color: Colors.raised;
             Glyph { name: "audio"; x: 19px; y: 19px; width: 32px; height: 32px; colorize: #292929; }
-            Rectangle { x: 51px; y: 50px; width: 17px; height: 17px; border-radius: 9px; border-width: 4px; border-color: #111111; background: #8bd5ad; }
+            Rectangle { x: 51px; y: 50px; width: 17px; height: 17px; border-radius: 9px; border-width: 4px; border-color: Colors.raised; background: Colors.positive; }
         }
         profile-content := VerticalLayout {
             x: 19px; y: 154px; width: parent.width - 38px; height: self.preferred-height;
             spacing: 18px;
             HorizontalLayout { cross-axis-alignment: center;
                 spacing: 8px;
-                Text { text: "Your profile"; color: #ededed; font-size: 20px; font-weight: Typography.title-weight; horizontal-stretch: 0; }
-                Rectangle { width: 26px; height: 18px; background: #242424; border-width: 1px; border-color: #3a3a3a; border-radius: 4px; Text { text: "you"; color: #aaaaaa; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } }
+                Text { text: "Your profile"; color: Colors.heading; font-size: 20px; font-weight: Typography.title-weight; horizontal-stretch: 0; }
+                Rectangle { width: 26px; height: 18px; background: Colors.badge; border-width: 1px; border-color: Colors.strong-line; border-radius: 4px; Text { text: "you"; color: Colors.secondary; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; } }
                 Rectangle { horizontal-stretch: 1; background: transparent; }
             }
             Divider { }
             VerticalLayout {
                 spacing: 12px;
-                Text { text: root.preview-kind; color: #8f8f8f; font-size: 10px; font-weight: Typography.caption-weight; letter-spacing: 0.5px; overflow: elide; }
+                Text { text: root.preview-kind; color: Colors.muted; font-size: 10px; font-weight: Typography.caption-weight; letter-spacing: 0.5px; overflow: elide; }
                 HorizontalLayout { cross-axis-alignment: center;
                     spacing: 12px;
                     Rectangle {
                         width: 62px; height: 62px; background: transparent;
                         Artwork { width: 62px; height: 62px; theme: root.form.theme; artwork: root.large-image; has-artwork: root.has-large-image; }
                         if root.form.small-image != "": Rectangle {
-                            x: 45px; y: 45px; width: 25px; height: 25px; border-width: 3px; border-color: #111111; border-radius: 13px; background: #425e53;
+                            x: 45px; y: 45px; width: 25px; height: 25px; border-width: 3px; border-color: Colors.raised; border-radius: 13px; background: #425e53;
                             Artwork { x: 3px; y: 3px; width: 19px; height: 19px; theme: "mint"; artwork: root.small-image; has-artwork: root.has-small-image; }
                         }
                     }
                     VerticalLayout {
                         spacing: 5px; alignment: start;
-                        Text { text: root.form.activity-type == 2 ? root.preview-details : root.preview-name; color: #ededed; font-size: 13px; font-weight: Typography.title-weight; wrap: word-wrap; }
-                        if root.form.activity-type != 2 && root.preview-details != "": Text { text: root.preview-details; color: #b0b0b0; font-size: 11px; wrap: word-wrap; }
-                        if root.preview-state != "": Text { text: root.preview-state; color: #b0b0b0; font-size: 11px; wrap: word-wrap; }
-                        if root.form.activity-type == 2 && root.preview-large-text != "": Text { text: root.preview-large-text; color: #b0b0b0; font-size: 11px; wrap: word-wrap; }
-                        if root.form.elapsed && !root.has-playback: Text { text: root.preview-time; color: #888888; font-size: 10px; }
+                        Text { text: root.form.activity-type == 2 ? root.preview-details : root.preview-name; color: Colors.heading; font-size: 13px; font-weight: Typography.title-weight; wrap: word-wrap; }
+                        if root.form.activity-type != 2 && root.preview-details != "": Text { text: root.preview-details; color: Colors.secondary; font-size: 11px; wrap: word-wrap; }
+                        if root.preview-state != "": Text { text: root.preview-state; color: Colors.secondary; font-size: 11px; wrap: word-wrap; }
+                        if root.form.activity-type == 2 && root.preview-large-text != "": Text { text: root.preview-large-text; color: Colors.secondary; font-size: 11px; wrap: word-wrap; }
+                        if root.form.elapsed && !root.has-playback: Text { text: root.preview-time; color: Colors.muted; font-size: 10px; }
                     }
                 }
                 if root.has-playback: VerticalLayout {
                     spacing: 5px;
-                    Rectangle { height: 4px; border-radius: 2px; background: #454545; Rectangle { width: max(2px, min(1, max(0, root.preview-fraction)) * parent.width); height: 4px; background: #dddddd; } }
-                    HorizontalLayout { cross-axis-alignment: center; Text { text: root.preview-time; color: #aaaaaa; font-size: 10px; } Text { text: root.preview-duration; color: #aaaaaa; font-size: 10px; horizontal-alignment: right; } }
+                    Rectangle { height: 4px; border-radius: 2px; background: Colors.strong-line; Rectangle { width: max(2px, min(1, max(0, root.preview-fraction)) * parent.width); height: 4px; background: Colors.label; } }
+                    HorizontalLayout { cross-axis-alignment: center; Text { text: root.preview-time; color: Colors.secondary; font-size: 10px; } Text { text: root.preview-duration; color: Colors.secondary; font-size: 10px; horizontal-alignment: right; } }
                 }
                 for i in root.form.button-count: Rectangle {
-                    min-height: 34px; border-radius: 6px; background: #242424; border-width: 1px; border-color: #383838;
-                    HorizontalLayout { cross-axis-alignment: center; alignment: center; spacing: 6px; Text { text: i == 0 ? (root.form.button1-label == "" ? "Button 1" : root.form.button1-label) : (root.form.button2-label == "" ? "Button 2" : root.form.button2-label); color: #d5d5d5; font-size: 11px; font-weight: Typography.title-weight; } Glyph { name: "external"; width: 11px; height: 11px; } }
+                    min-height: 34px; border-radius: 6px; background: Colors.badge; border-width: 1px; border-color: Colors.strong-line;
+                    HorizontalLayout { cross-axis-alignment: center; alignment: center; spacing: 6px; Text { text: i == 0 ? (root.form.button1-label == "" ? "Button 1" : root.form.button1-label) : (root.form.button2-label == "" ? "Button 2" : root.form.button2-label); color: Colors.label; font-size: 11px; font-weight: Typography.title-weight; } Glyph { name: "external"; width: 11px; height: 11px; } }
                 }
             }
-            Rectangle { height: 38px; border-width: 1px; border-color: #2c2c2c; border-radius: 7px; HorizontalLayout { cross-axis-alignment: center; padding-left: 11px; padding-right: 11px; Text { text: "Your presence, at a glance."; color: #818181; font-size: 10px; vertical-alignment: center; } Glyph { name: "wand"; width: 13px; height: 13px; } } }
+            Rectangle { height: 38px; border-width: 1px; border-color: Colors.line; border-radius: 7px; HorizontalLayout { cross-axis-alignment: center; padding-left: 11px; padding-right: 11px; Text { text: "Your presence, at a glance."; color: Colors.muted; font-size: 10px; vertical-alignment: center; } Glyph { name: "wand"; width: 13px; height: 13px; } } }
         }
     }
-    HorizontalLayout { cross-axis-alignment: center; alignment: center; spacing: 6px; Glyph { name: "monitor"; width: 13px; height: 13px; } Text { text: "An approximation of your Discord profile"; color: #818181; font-size: 10px; } }
+    HorizontalLayout { cross-axis-alignment: center; alignment: center; spacing: 6px; Glyph { name: "monitor"; width: 13px; height: 13px; } Text { text: "An approximation of your Discord profile"; color: Colors.muted; font-size: 10px; } }
     Rectangle {
-        min-height: 88px; border-radius: 11px; border-width: 1px; border-color: #262626; background: #0a0a0a;
+        min-height: 88px; border-radius: 11px; border-width: 1px; border-color: Colors.line; background: Colors.surface;
         VerticalLayout {
             padding: 17px; spacing: 16px;
-            HorizontalLayout { cross-axis-alignment: center; Text { text: root.connection == "connected" ? "YOUR PRESENCE IS LIVE" : "READY WHEN YOU ARE"; color: #999999; font-size: 9px; font-weight: Typography.caption-weight; letter-spacing: 1px; } Glyph { name: "radio"; width: 13px; height: 13px; colorize: #8bd5ad; } }
-            HorizontalLayout { cross-axis-alignment: center; spacing: 8px; Text { width: 5px; text: "•"; color: #dcba7f; } Text { horizontal-stretch: 1; text: root.status; color: #a3a3a3; font-size: 11px; overflow: elide; } UiButton { text: "Set up  →"; compact: true; enabled: root.enabled; clicked => { root.setup(); } } }
+            HorizontalLayout { cross-axis-alignment: center; Text { text: root.connection == "connected" ? "YOUR PRESENCE IS LIVE" : "READY WHEN YOU ARE"; color: Colors.secondary; font-size: 9px; font-weight: Typography.caption-weight; letter-spacing: 1px; } Glyph { name: "radio"; width: 13px; height: 13px; colorize: Colors.positive; } }
+            HorizontalLayout { cross-axis-alignment: center; spacing: 8px; Text { width: 5px; text: "•"; color: Colors.warning; } Text { horizontal-stretch: 1; text: root.status; color: Colors.secondary; font-size: 11px; overflow: elide; } UiButton { text: "Set up  →"; compact: true; enabled: root.enabled; clicked => { root.setup(); } } }
         }
     }
 }
@@ -205,12 +205,15 @@ export component MainWindow inherits Window {
     preferred-height: 1000px;
     min-width: 800px;
     min-height: 620px;
-    background: #000000;
+    background: Colors.background;
     // Match the text face used by the pre-native studio, including its medium weights.
     default-font-family: "Segoe UI Variable Text";
     default-font-size: 13px;
     default-font-weight: Typography.body-weight;
     in-out property <int> page: 0;
+    in property <string> app-version;
+    in property <string> appearance: "dark";
+    out property <bool> dark-appearance: Colors.dark;
     in-out property <int> editor-tab: 0;
     in-out property <ProfileForm> form;
     in-out property <RuleForm> rule-form;
@@ -260,19 +263,23 @@ export component MainWindow inherits Window {
     private property <bool> compact-nav: root.width < 1040px;
     private property <length> sidebar-width: compact-nav ? 72px : 224px;
     private property <string> page-title: page == 0 ? "Presence studio" : page == 1 ? "App integrations" : page == 2 ? "Activity log" : page == 3 ? "Archive" : "Settings";
-    init => { Palette.color-scheme = dark; }
+    init => { root.apply-appearance(); }
+    changed appearance => { root.apply-appearance(); }
+    function apply-appearance() {
+        Palette.color-scheme = root.appearance == "light" ? ColorScheme.light : root.appearance == "system" ? ColorScheme.unknown : ColorScheme.dark;
+    }
     changed modal => { if root.modal != "" { dialog-focus.focus(); } }
 
     Rectangle {
         x: 0px; y: 0px; width: root.sidebar-width; height: parent.height;
-        background: #000000;
-        Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #1b1b1b; }
+        background: Colors.background;
+        Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: Colors.subtle-line; }
         HorizontalLayout { cross-axis-alignment: center;
             x: root.compact-nav ? 18px : 23px; y: 32px; width: parent.width - 40px; height: 38px; spacing: 11px; alignment: start;
             Image { source: @image-url("../../../assets/icon.svg"); width: 36px; height: 36px; image-fit: contain; }
-            if !root.compact-nav: Text { text: "presence."; color: #eeeeee; font-size: 26px; font-weight: Typography.brand-weight; letter-spacing: -1.2px; vertical-alignment: center; }
+            if !root.compact-nav: Text { text: "presence."; color: Colors.heading; font-size: 26px; font-weight: Typography.brand-weight; letter-spacing: -1.2px; vertical-alignment: center; }
         }
-        if !root.compact-nav: Text { x: 25px; y: 117px; text: "YOUR WORKSPACE"; color: #818181; font-size: 10px; letter-spacing: 1.6px; font-weight: Typography.caption-weight; }
+        if !root.compact-nav: Text { x: 25px; y: 117px; text: "YOUR WORKSPACE"; color: Colors.muted; font-size: 10px; letter-spacing: 1.6px; font-weight: Typography.caption-weight; }
         VerticalLayout {
             x: 12px; y: 143px; width: parent.width - 24px; spacing: 5px;
             NavItem { enabled: root.modal == ""; text: "Presence studio"; icon: "layers"; selected: root.page == 0; compact: root.compact-nav; count: root.profile-names.length; clicked => { root.page = 0; } }
@@ -282,18 +289,18 @@ export component MainWindow inherits Window {
         NavItem { enabled: root.modal == ""; x: 12px; y: parent.height - 67px; width: parent.width - 24px; text: "Settings"; icon: "settings"; selected: root.page == 4; compact: root.compact-nav; clicked => { root.page = 4; } }
     }
     Rectangle {
-        x: root.sidebar-width; y: 0px; width: parent.width - root.sidebar-width; height: 68px; background: #000000;
-        Divider { y: parent.height - 1px; width: parent.width; background: #1b1b1b; }
+        x: root.sidebar-width; y: 0px; width: parent.width - root.sidebar-width; height: 68px; background: Colors.background;
+        Divider { y: parent.height - 1px; width: parent.width; background: Colors.subtle-line; }
         HorizontalLayout { cross-axis-alignment: center;
             padding-left: 36px; padding-right: 28px; spacing: 16px;
-            Text { text: "Workspace"; color: #818181; font-size: 12px; vertical-alignment: center; }
-            Text { text: "›"; color: #555555; font-size: 18px; vertical-alignment: center; }
-            Text { text: root.page-title; color: #d0d0d0; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
+            Text { text: "Workspace"; color: Colors.muted; font-size: 12px; vertical-alignment: center; }
+            Text { text: "›"; color: Colors.focus; font-size: 18px; vertical-alignment: center; }
+            Text { text: root.page-title; color: Colors.label; font-size: 12px; vertical-alignment: center; horizontal-stretch: 1; }
             Rectangle {
-                width: status-text.preferred-width + 24px; height: 31px; border-width: 1px; border-color: root.connection == "connected" ? #284233 : #262626; border-radius: 16px; background: root.connection == "connected" ? #0a160f : #0a0a0a;
-                status-text := Text { x: 12px; height: parent.height; text: root.connection == "connected" ? "•  Connected to Discord" : root.connection == "connecting" ? "•  Connecting…" : "•  Discord disconnected"; color: root.connection == "connected" ? #8bd5ad : #a3a3a3; font-size: 11px; vertical-alignment: center; }
+                width: status-text.preferred-width + 24px; height: 31px; border-width: 1px; border-color: root.connection == "connected" ? Colors.positive-line : Colors.line; border-radius: 16px; background: root.connection == "connected" ? Colors.positive-surface : Colors.surface;
+                status-text := Text { x: 12px; height: parent.height; text: root.connection == "connected" ? "•  Connected to Discord" : root.connection == "connecting" ? "•  Connecting…" : "•  Discord disconnected"; color: root.connection == "connected" ? Colors.positive : Colors.secondary; font-size: 11px; vertical-alignment: center; }
             }
-            Rectangle { width: 1px; height: 18px; background: #262626; }
+            Rectangle { width: 1px; height: 18px; background: Colors.line; }
             IconButton { enabled: root.modal == ""; icon: "help"; label: "Setup help"; clicked => { root.page = 0; root.editor-tab = 3; } }
         }
     }
@@ -308,7 +315,7 @@ export component MainWindow inherits Window {
             spacing: root.page == 0 ? 38px : 26px;
             HorizontalLayout { cross-axis-alignment: center;
                 min-height: 45px;
-                Text { text: root.page-title; color: #f5f5f5; font-size: 36px; font-weight: Typography.heading-weight; letter-spacing: -1.35px; vertical-alignment: center; horizontal-stretch: 1; }
+                Text { text: root.page-title; color: Colors.heading; font-size: 36px; font-weight: Typography.heading-weight; letter-spacing: -1.35px; vertical-alignment: center; horizontal-stretch: 1; }
                 if root.page == 0: UiButton { text: "New presence"; icon: "plus"; primary: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("new-profile", ""); } }
                 if root.page == 1: UiButton { text: "Add application"; icon: "plus"; primary: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("new-rule", ""); } }
                 if root.page == 2: UiButton { enabled: root.modal == ""; text: "Archive"; icon: "archive"; clicked => { root.page = 3; } }
@@ -321,8 +328,8 @@ export component MainWindow inherits Window {
                     spacing: 14px;
                     HorizontalLayout { cross-axis-alignment: center;
                         spacing: 10px;
-                        Text { text: "Your presences"; color: #d5d5d5; font-size: 12px; font-weight: Typography.title-weight; vertical-alignment: center; }
-                        Text { text: root.profile-names.length; color: #818181; font-size: 10px; vertical-alignment: center; }
+                        Text { text: "Your presences"; color: Colors.label; font-size: 12px; font-weight: Typography.title-weight; vertical-alignment: center; }
+                        Text { text: root.profile-names.length; color: Colors.muted; font-size: 10px; vertical-alignment: center; }
                         Rectangle { background: transparent; horizontal-stretch: 1; }
                         Input { enabled: root.modal == ""; width: 190px; height: 34px; text <=> root.search; placeholder: "Find a presence…"; edited(value) => { root.action("search", value); } }
                     }
@@ -333,21 +340,21 @@ export component MainWindow inherits Window {
                         HorizontalLayout { cross-axis-alignment: center;
                             spacing: 12px;
                             for profile in root.profiles: Rectangle {
-                                min-width: 218px; height: 80px; background: profile.selected ? #141414 : #0a0a0a;
-                                border-width: 1px; border-color: profile.selected ? #717171 : #262626; border-radius: 11px;
+                                min-width: 218px; height: 80px; background: profile.selected ? Colors.selected : Colors.surface;
+                                border-width: 1px; border-color: profile.selected ? Colors.muted : Colors.line; border-radius: 11px;
                                 accessible-role: button; accessible-label: profile.title; accessible-enabled: root.modal == "";
                                 accessible-action-default => { if root.modal == "" { root.action("select-profile", profile.id); } }
                                 HorizontalLayout { cross-axis-alignment: center;
                                     padding-left: 16px; padding-right: 16px; spacing: 14px;
                                     Artwork { width: 42px; height: 42px; theme: profile.theme; artwork: profile.artwork; has-artwork: profile.has-artwork; }
-                                    VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: profile.title; color: #eeeeee; font-size: 13px; font-weight: Typography.title-weight; overflow: elide; } Text { text: profile.subtitle; color: #818181; font-size: 11px; overflow: elide; } }
-                                    Text { width: 16px; text: profile.selected ? "✓" : "›"; color: profile.selected ? #dddddd : #777777; font-size: 17px; vertical-alignment: center; }
+                                    VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: profile.title; color: Colors.heading; font-size: 13px; font-weight: Typography.title-weight; overflow: elide; } Text { text: profile.subtitle; color: Colors.muted; font-size: 11px; overflow: elide; } }
+                                    Text { width: 16px; text: profile.selected ? "✓" : "›"; color: profile.selected ? Colors.label : Colors.placeholder; font-size: 17px; vertical-alignment: center; }
                                 }
                                 TouchArea { enabled: root.modal == ""; mouse-cursor: pointer; clicked => { card-focus.focus(); root.action("select-profile", profile.id); } }
                                 card-focus := FocusScope { enabled: root.modal == ""; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.action("select-profile", profile.id); return accept; } return reject; } }
                                 forward-focus: card-focus;
                             }
-                            if root.profiles.length == 0: Text { text: "No presences match your search."; color: #818181; font-size: 12px; vertical-alignment: center; }
+                            if root.profiles.length == 0: Text { text: "No presences match your search."; color: Colors.muted; font-size: 12px; vertical-alignment: center; }
                         }
                     }
                 }
@@ -355,22 +362,22 @@ export component MainWindow inherits Window {
                     spacing: 26px;
                     Rectangle {
                         min-width: 430px; height: max(340px, root.height - 385px); horizontal-stretch: 1; vertical-stretch: 0;
-                        background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 13px;
+                        background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 13px;
                         editor-layout := VerticalLayout {
                             spacing: 0px;
                             Rectangle {
                                 height: 82px;
                                 HorizontalLayout { cross-axis-alignment: center;
                                     padding-left: 24px; padding-right: 24px; spacing: 12px;
-                                    Rectangle { width: 36px; height: 36px; border-radius: 10px; border-width: 1px; border-color: #333333; background: #161616; Glyph { name: "settings"; x: 10px; y: 10px; width: 16px; height: 16px; } }
-                                    VerticalLayout { horizontal-stretch: 1; alignment: center; spacing: 7px; Text { text: root.form.name; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; overflow: elide; } Text { text: root.dirty ? "•  Unsaved changes" : "✓  All changes saved"; color: root.dirty ? #dcba7f : #818181; font-size: 11px; } }
+                                    Rectangle { width: 36px; height: 36px; border-radius: 10px; border-width: 1px; border-color: Colors.strong-line; background: Colors.raised; Glyph { name: "settings"; x: 10px; y: 10px; width: 16px; height: 16px; } }
+                                    VerticalLayout { horizontal-stretch: 1; alignment: center; spacing: 7px; Text { text: root.form.name; color: Colors.heading; font-size: 15px; font-weight: Typography.title-weight; overflow: elide; } Text { text: root.dirty ? "•  Unsaved changes" : "✓  All changes saved"; color: root.dirty ? Colors.warning : Colors.muted; font-size: 11px; } }
                                     IconButton { icon: "copy"; label: "Duplicate presence"; enabled: root.modal == "" && !root.busy; clicked => { root.action("duplicate-profile", ""); } }
                                     IconButton { icon: "trash"; label: "Delete presence"; enabled: root.modal == "" && !root.busy && root.profile-names.length > 1; clicked => { root.action("delete-profile", ""); } }
-                                    Rectangle { width: 1px; height: 18px; background: #262626; }
+                                    Rectangle { width: 1px; height: 18px; background: Colors.line; }
                                     UiButton { text: "Save"; icon: "check"; compact: true; enabled: root.modal == "" && root.dirty && !root.busy; clicked => { root.action("save-profile", ""); } }
                                 }
                             }
-                            Divider { background: #1b1b1b; }
+                            Divider { background: Colors.subtle-line; }
                             Rectangle {
                                 height: 49px;
                                 HorizontalLayout { cross-axis-alignment: center;
@@ -379,8 +386,8 @@ export component MainWindow inherits Window {
                                         width: tab-text.preferred-width + 23px; height: 49px;
                                         accessible-role: button; accessible-label: tab + " editor tab"; accessible-enabled: root.modal == "";
                                         accessible-action-default => { if root.modal == "" { root.editor-tab = index; } }
-                                        HorizontalLayout { cross-axis-alignment: center; spacing: 7px; Glyph { name: index == 0 ? "code" : index == 1 ? "image" : index == 2 ? "link" : "plug"; width: 14px; height: 14px; colorize: root.editor-tab == index ? #ededed : #818181; } tab-text := Text { text: tab; color: root.editor-tab == index ? #eeeeee : #818181; font-size: 11px; vertical-alignment: center; } }
-                                        if root.editor-tab == index: Rectangle { y: parent.height - 2px; height: 2px; width: parent.width; background: #eeeeee; }
+                                        HorizontalLayout { cross-axis-alignment: center; spacing: 7px; Glyph { name: index == 0 ? "code" : index == 1 ? "image" : index == 2 ? "link" : "plug"; width: 14px; height: 14px; colorize: root.editor-tab == index ? Colors.heading : Colors.muted; } tab-text := Text { text: tab; color: root.editor-tab == index ? Colors.heading : Colors.muted; font-size: 11px; vertical-alignment: center; } }
+                                        if root.editor-tab == index: Rectangle { y: parent.height - 2px; height: 2px; width: parent.width; background: Colors.heading; }
                                         TouchArea { enabled: root.modal == ""; mouse-cursor: pointer; clicked => { tab-focus.focus(); root.editor-tab = index; } }
                                         tab-focus := FocusScope { enabled: root.modal == ""; focus-on-click: false; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.editor-tab = index; return accept; } if event.text == Key.RightArrow { root.editor-tab = min(3, index + 1); return accept; } if event.text == Key.LeftArrow { root.editor-tab = max(0, index - 1); return accept; } return reject; } }
                                         forward-focus: tab-focus;
@@ -403,7 +410,7 @@ export component MainWindow inherits Window {
                                     HorizontalLayout { cross-axis-alignment: center;
                                         spacing: 18px;
                                         Field { enabled: root.modal == ""; label: "Display name"; value <=> root.form.app-name; placeholder: "Discord application name"; edited(value) => { root.field-edited("appName", value); } }
-                                        VerticalLayout { horizontal-stretch: 1; min-width: 0px; preferred-width: 0px; spacing: 9px; Text { text: "Activity type"; color: #d5d5d5; font-size: 12px; } Choice { enabled: root.modal == ""; label: "Activity type"; options: ["Playing", "Listening to", "Watching", "Competing in"]; current-index: root.form.activity-type == 2 ? 1 : root.form.activity-type == 3 ? 2 : root.form.activity-type == 5 ? 3 : 0; selected(index) => { root.field-edited("type", index == 1 ? "2" : index == 2 ? "3" : index == 3 ? "5" : "0"); } } }
+                                        VerticalLayout { horizontal-stretch: 1; min-width: 0px; preferred-width: 0px; spacing: 9px; Text { text: "Activity type"; color: Colors.label; font-size: 12px; } Choice { enabled: root.modal == ""; label: "Activity type"; options: ["Playing", "Listening to", "Watching", "Competing in"]; current-index: root.form.activity-type == 2 ? 1 : root.form.activity-type == 3 ? 2 : root.form.activity-type == 5 ? 3 : 0; selected(index) => { root.field-edited("type", index == 1 ? "2" : index == 2 ? "3" : index == 3 ? "5" : "0"); } } }
                                     }
                                     Divider { }
                                     SectionTitle { title: "A little more context"; description: "The details that make it yours."; }
@@ -433,9 +440,9 @@ export component MainWindow inherits Window {
                                         Artwork { width: 88px; height: 88px; theme: root.form.theme; artwork: root.editor-artwork; has-artwork: root.has-preview-large; }
                                         VerticalLayout {
                                             spacing: 12px;
-                                            Text { text: "Preview theme"; color: #d2d2d2; font-size: 13px; font-weight: Typography.label-weight; }
-                                            Text { text: "A look for your studio preview."; color: #818181; font-size: 11px; }
-                                            HorizontalLayout { cross-axis-alignment: center; spacing: 10px; alignment: start; for theme in ["violet", "mint", "peach", "blue"]: Rectangle { width: 28px; height: 28px; border-radius: 14px; border-width: root.form.theme == theme ? 2px : 0px; border-color: #eeeeee; background: theme == "violet" ? #8a7aaf : theme == "mint" ? #577e71 : theme == "peach" ? #a78b79 : #667f9c; TouchArea { mouse-cursor: pointer; clicked => { root.field-edited("theme", theme); } } } }
+                                            Text { text: "Preview theme"; color: Colors.label; font-size: 13px; font-weight: Typography.label-weight; }
+                                            Text { text: "A look for your studio preview."; color: Colors.muted; font-size: 11px; }
+                                            HorizontalLayout { cross-axis-alignment: center; spacing: 10px; alignment: start; for theme in ["violet", "mint", "peach", "blue"]: Rectangle { width: 28px; height: 28px; border-radius: 14px; border-width: root.form.theme == theme ? 2px : 0px; border-color: Colors.heading; background: theme == "violet" ? #8a7aaf : theme == "mint" ? #577e71 : theme == "peach" ? #a78b79 : #667f9c; TouchArea { mouse-cursor: pointer; clicked => { root.field-edited("theme", theme); } } } }
                                         }
                                     }
                                     Divider { }
@@ -452,10 +459,10 @@ export component MainWindow inherits Window {
                                     spacing: 23px;
                                     SectionTitle { title: "Keep the conversation going"; description: "Add up to two links to your presence."; }
                                     for i in root.form.button-count: Rectangle {
-                                        min-height: button-fields.preferred-height; border-width: 1px; border-color: #262626; border-radius: 10px; background: #0c0c0c;
+                                        min-height: button-fields.preferred-height; border-width: 1px; border-color: Colors.line; border-radius: 10px; background: Colors.subtle-hover;
                                         button-fields := VerticalLayout {
                                             padding: 18px; spacing: 19px;
-                                            HorizontalLayout { cross-axis-alignment: center; Text { text: "Button " + (i + 1); color: #d5d5d5; font-size: 12px; font-weight: Typography.title-weight; vertical-alignment: center; } IconButton { enabled: root.modal == ""; icon: "trash"; label: "Remove button"; clicked => { root.action("remove-button", i); } } }
+                                            HorizontalLayout { cross-axis-alignment: center; Text { text: "Button " + (i + 1); color: Colors.label; font-size: 12px; font-weight: Typography.title-weight; vertical-alignment: center; } IconButton { enabled: root.modal == ""; icon: "trash"; label: "Remove button"; clicked => { root.action("remove-button", i); } } }
                                             Field { enabled: root.modal == ""; label: "Label"; value: i == 0 ? root.form.button1-label : root.form.button2-label; placeholder: "e.g. My portfolio"; edited(value) => { root.field-edited(i == 0 ? "button1Label" : "button2Label", value); } }
                                             Field { enabled: root.modal == ""; label: "Link"; value: i == 0 ? root.form.button1-url : root.form.button2-url; placeholder: "https://your-site.com"; edited(value) => { root.field-edited(i == 0 ? "button1Url" : "button2Url", value); } }
                                         }
@@ -470,13 +477,13 @@ export component MainWindow inherits Window {
                                     if root.global-id-dirty: Note { text: "The global application ID has unsaved changes in Settings. Go live saves them when this presence uses the global ID."; }
                                     UiButton { enabled: root.modal == ""; text: "Open Settings  →"; clicked => { root.page = 4; } }
                                     Field { enabled: root.modal == ""; label: "Discord application ID override (optional)"; hint: "Leave blank to use the global ID. Override for a different Discord application or its uploaded artwork."; value <=> root.form.application-id; placeholder: "Use global application ID"; edited(value) => { root.field-edited("applicationId", value); } }
-                                    Text { text: "1    Create an application in the Discord Developer Portal.\n\n2    Copy its Application ID from General Information and save it in Settings.\n\n3    Open Discord desktop, save this presence, and go live. Enable activity sharing in Discord's settings."; color: #a3a3a3; font-size: 12px; wrap: word-wrap; }
+                                    Text { text: "1    Create an application in the Discord Developer Portal.\n\n2    Copy its Application ID from General Information and save it in Settings.\n\n3    Open Discord desktop, save this presence, and go live. Enable activity sharing in Discord's settings."; color: Colors.secondary; font-size: 12px; wrap: word-wrap; }
                                     UiButton { enabled: root.modal == ""; text: "Open Developer Portal"; icon: "external"; clicked => { root.action("developer-portal", ""); } }
                                     Note { text: "Presence Control connects directly to Discord on your computer. Your configuration stays on this device."; icon: "help"; }
                                 }
                             }
                             }
-                            Divider { background: #1b1b1b; }
+                            Divider { background: Colors.subtle-line; }
                             Rectangle {
                                 height: 80px;
                                 HorizontalLayout { cross-axis-alignment: center; padding-left: 24px; padding-right: 24px; alignment: end; if root.selected-live: UiButton { text: "Stop presence"; icon: "stop"; enabled: root.modal == "" && !root.busy; clicked => { root.action("stop", ""); } } if !root.selected-live: UiButton { text: "Go live   →"; icon: "radio"; primary: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("activate", ""); } } }
@@ -501,28 +508,28 @@ export component MainWindow inherits Window {
             if root.page == 1: VerticalLayout {
                 spacing: 26px;
                 Rectangle {
-                    min-height: 96px; background: @linear-gradient(115deg, #161616, #090909); border-width: 1px; border-color: #333333; border-radius: 12px;
-                    HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 18px; Rectangle { width: 46px; height: 46px; border-width: 1px; border-color: #333333; border-radius: 12px; background: #1b1b1b; Glyph { name: "wand"; x: 11px; y: 11px; width: 24px; height: 24px; } } SectionTitle { title: "Automatic presence"; description: root.automatic ? "Checks open applications every 15 seconds. The first matching application is used." : "Switch to the right presence when a matching application is open."; } Text { text: root.automatic ? "Enabled" : "Off"; color: #818181; font-size: 12px; vertical-alignment: center; } Toggle { checked: root.automatic; enabled: root.modal == "" && !root.busy; label: "Automatic presence"; toggled => { root.action("toggle-automatic", ""); } } }
+                    min-height: 96px; background: @linear-gradient(115deg, Colors.raised, Colors.surface); border-width: 1px; border-color: Colors.strong-line; border-radius: 12px;
+                    HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 18px; Rectangle { width: 46px; height: 46px; border-width: 1px; border-color: Colors.strong-line; border-radius: 12px; background: Colors.subtle-line; Glyph { name: "wand"; x: 11px; y: 11px; width: 24px; height: 24px; } } SectionTitle { title: "Automatic presence"; description: root.automatic ? "Checks open applications every 15 seconds. The first matching application is used." : "Switch to the right presence when a matching application is open."; } Text { text: root.automatic ? "Enabled" : "Off"; color: Colors.muted; font-size: 12px; vertical-alignment: center; } Toggle { checked: root.automatic; enabled: root.modal == "" && !root.busy; label: "Automatic presence"; toggled => { root.action("toggle-automatic", ""); } } }
                 }
                 Rectangle {
-                    min-height: rules-layout.preferred-height; background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
+                    min-height: rules-layout.preferred-height; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
                     rules-layout := VerticalLayout {
                         spacing: 0px;
-                        VerticalLayout { padding: 24px; spacing: 10px; Text { text: "Applications    " + root.rules.length; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; } Text { text: "Drag the handles to set priority. The first enabled matching application wins."; color: #818181; font-size: 12px; wrap: word-wrap; } }
+                        VerticalLayout { padding: 24px; spacing: 10px; Text { text: "Applications    " + root.rules.length; color: Colors.heading; font-size: 15px; font-weight: Typography.title-weight; } Text { text: "Drag the handles to set priority. The first enabled matching application wins."; color: Colors.muted; font-size: 12px; wrap: word-wrap; } }
                         if root.rules.length == 0: EmptyState { title: "No applications yet"; description: "Add an application or scan your open windows to get started."; }
                         for rule[index] in root.rules: rule-row := Rectangle {
                             private property <bool> drop-after: false;
                             height: 82px;
                             opacity: handle.dragging ? 0.45 : 1;
-                            background: drop.has-drag ? #161616 : transparent;
-                            Divider { y: 0px; width: parent.width; background: #1b1b1b; }
+                            background: drop.has-drag ? Colors.raised : transparent;
+                            Divider { y: 0px; width: parent.width; background: Colors.subtle-line; }
                             HorizontalLayout { cross-axis-alignment: center;
                                 padding-left: 20px; padding-right: 20px; spacing: 12px;
                                 handle := PriorityHandle { data: root.rule-drag-data(rule.id); label: "Change priority for " + rule.name; enabled: root.rules.length > 1 && root.modal == "" && !root.busy; move-up => { if index > 0 { root.action("rule-up", rule.id); } } move-down => { if index + 1 < root.rules.length { root.action("rule-down", rule.id); } } }
-                                Text { text: index + 1; color: #818181; font-size: 10px; vertical-alignment: center; }
-                                Rectangle { width: 38px; height: 38px; border-width: 1px; border-color: #333333; border-radius: 10px; background: #161616; Glyph { name: "code"; x: 10px; y: 10px; } }
-                                VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: rule.name; color: #d5d5d5; font-size: 13px; font-weight: Typography.title-weight; overflow: elide; } Text { text: rule.process; color: #818181; font-size: 11px; overflow: elide; } }
-                                Text { text: rule.profile; color: #aaaaaa; font-size: 11px; vertical-alignment: center; overflow: elide; max-width: 140px; }
+                                Text { text: index + 1; color: Colors.muted; font-size: 10px; vertical-alignment: center; }
+                                Rectangle { width: 38px; height: 38px; border-width: 1px; border-color: Colors.strong-line; border-radius: 10px; background: Colors.raised; Glyph { name: "code"; x: 10px; y: 10px; } }
+                                VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: rule.name; color: Colors.label; font-size: 13px; font-weight: Typography.title-weight; overflow: elide; } Text { text: rule.process; color: Colors.muted; font-size: 11px; overflow: elide; } }
+                                Text { text: rule.profile; color: Colors.secondary; font-size: 11px; vertical-alignment: center; overflow: elide; max-width: 140px; }
                                 Toggle { checked: rule.enabled; enabled: root.modal == "" && !root.busy; label: "Enable application"; toggled => { root.action("toggle-rule", rule.id); } }
                                 UiButton { text: "Edit"; compact: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("edit-rule", rule.id); } }
                                 IconButton { icon: "trash"; label: "Delete application"; enabled: root.modal == "" && !root.busy; clicked => { root.action("delete-rule", rule.id); } }
@@ -539,19 +546,19 @@ export component MainWindow inherits Window {
                                     return DragAction.move;
                                 }
                             }
-                            if drop.has-drag: Rectangle { x: 12px; y: rule-row.drop-after ? parent.height - 2px : 0px; width: parent.width - 24px; height: 2px; border-radius: 1px; background: #b8d8c6; }
+                            if drop.has-drag: Rectangle { x: 12px; y: rule-row.drop-after ? parent.height - 2px : 0px; width: parent.width - 24px; height: 2px; border-radius: 1px; background: Colors.positive; }
                         }
                     }
                 }
                 Rectangle {
-                    min-height: apps-layout.preferred-height; background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
+                    min-height: apps-layout.preferred-height; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
                     apps-layout := VerticalLayout {
                         spacing: 0px;
                         HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 16px; SectionTitle { title: "Open applications"; description: "Add a process to match a presence. Window titles stay on this device until included in a live presence."; } UiButton { text: root.scanning ? "Scanning…" : "Scan applications"; icon: "refresh"; enabled: root.modal == "" && !root.scanning; clicked => { root.action("scan", ""); } } }
                         if root.apps.length == 0: EmptyState { icon: "monitor"; title: root.scanning ? "Scanning open applications…" : "No open applications listed"; description: "Scan applications to find the windows currently open on your computer."; }
                         for app in root.apps: Rectangle {
-                            height: 76px; Divider { y: 0px; width: parent.width; background: #1b1b1b; }
-                            HorizontalLayout { cross-axis-alignment: center; padding-left: 24px; padding-right: 20px; spacing: 14px; Glyph { name: "monitor"; width: 18px; height: 18px; } VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: app.process; color: #d5d5d5; font-size: 12px; font-weight: Typography.title-weight; overflow: elide; } Text { text: app.title; color: #818181; font-size: 11px; overflow: elide; } } UiButton { text: "Add application"; icon: "plus"; compact: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("add-detected", app.id); } } }
+                            height: 76px; Divider { y: 0px; width: parent.width; background: Colors.subtle-line; }
+                            HorizontalLayout { cross-axis-alignment: center; padding-left: 24px; padding-right: 20px; spacing: 14px; Glyph { name: "monitor"; width: 18px; height: 18px; } VerticalLayout { horizontal-stretch: 1; min-width: 0px; spacing: 7px; alignment: center; Text { text: app.process; color: Colors.label; font-size: 12px; font-weight: Typography.title-weight; overflow: elide; } Text { text: app.title; color: Colors.muted; font-size: 11px; overflow: elide; } } UiButton { text: "Add application"; icon: "plus"; compact: true; enabled: root.modal == "" && !root.busy; clicked => { root.action("add-detected", app.id); } } }
                         }
                     }
                 }
@@ -560,8 +567,8 @@ export component MainWindow inherits Window {
             if root.page == 2: VerticalLayout {
                 spacing: 25px;
                 Rectangle {
-                    min-height: 96px; background: @linear-gradient(115deg, #161616, #090909); border-width: 1px; border-color: #333333; border-radius: 12px;
-                    HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 18px; Rectangle { width: 46px; height: 46px; border-width: 1px; border-color: #333333; border-radius: 12px; background: #1b1b1b; Glyph { name: "clock"; x: 11px; y: 11px; width: 24px; height: 24px; } } SectionTitle { title: "Record application time"; description: "Save cumulative time and previous sessions while an automatic presence is live. Turning this off keeps your history."; } Text { text: root.record-time ? "Enabled" : "Off"; color: #818181; font-size: 12px; vertical-alignment: center; } Toggle { checked: root.record-time; enabled: root.modal == "" && !root.busy; label: "Record application time"; toggled => { root.action("toggle-recording", ""); } } }
+                    min-height: 96px; background: @linear-gradient(115deg, Colors.raised, Colors.surface); border-width: 1px; border-color: Colors.strong-line; border-radius: 12px;
+                    HorizontalLayout { cross-axis-alignment: center; padding: 24px; spacing: 18px; Rectangle { width: 46px; height: 46px; border-width: 1px; border-color: Colors.strong-line; border-radius: 12px; background: Colors.subtle-line; Glyph { name: "clock"; x: 11px; y: 11px; width: 24px; height: 24px; } } SectionTitle { title: "Record application time"; description: "Save cumulative time and previous sessions while an automatic presence is live. Turning this off keeps your history."; } Text { text: root.record-time ? "Enabled" : "Off"; color: Colors.muted; font-size: 12px; vertical-alignment: center; } Toggle { checked: root.record-time; enabled: root.modal == "" && !root.busy; label: "Record application time"; toggled => { root.action("toggle-recording", ""); } } }
                 }
                 HistorySection { title: "Application time"; description: "Archive keeps the total here and updates its Archive entry after each completed recording. Delete removes the total; session history is kept. Pause recording to delete the active total."; empty-text: "No recorded time yet. Enable recording and start an automatic application presence."; entries: root.totals; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
                 HistorySection { title: "This session"; empty-text: "A fresh start. Your connection and presence updates will appear here when you go live."; entries: root.events; busy: root.busy || root.modal != ""; action(name,arg) => { root.action(name,arg); } }
@@ -572,33 +579,59 @@ export component MainWindow inherits Window {
             if root.page == 4: VerticalLayout {
                 spacing: 25px;
                 Rectangle {
-                    min-height: settings-content.preferred-height; background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
+                    min-height: appearance-content.preferred-height; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
+                    appearance-content := VerticalLayout {
+                        padding: 24px; spacing: 22px;
+                        SectionTitle { title: "Appearance"; description: "Choose a color mode. Changes save automatically."; }
+                        Rectangle {
+                            height: 42px; max-width: 420px;
+                            accessible-role: radio-group; accessible-label: "Color mode";
+                            HorizontalLayout {
+                                spacing: 8px;
+                                for mode[index] in ["dark", "light", "system"]: ModeOption {
+                                    text: mode == "dark" ? "Dark" : mode == "light" ? "Light" : "System";
+                                    checked: root.appearance == mode;
+                                    enabled: root.modal == "" && !root.busy;
+                                    clicked => { root.action("set-appearance", mode); }
+                                    step(delta) => {
+                                        let current = root.appearance == "dark" ? 0 : root.appearance == "light" ? 1 : 2;
+                                        let next = Math.mod(current + delta + 3, 3);
+                                        root.action("set-appearance", next == 0 ? "dark" : next == 1 ? "light" : "system");
+                                    }
+                                }
+                            }
+                        }
+                        Text { text: root.appearance == "system" ? "Follows your system appearance and updates automatically." : root.appearance == "light" ? "Light surfaces with dark text for a brighter workspace." : "OLED black backgrounds. The default Presence Control theme."; color: Colors.muted; font-size: 12px; wrap: word-wrap; }
+                    }
+                }
+                Rectangle {
+                    min-height: settings-content.preferred-height; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
                     settings-content := VerticalLayout {
                         padding: 24px; spacing: 22px;
                         SectionTitle { title: "Discord connection"; description: "Set one application ID for all your presences. Individual presences can optionally override it in Connection."; }
                         Field { label: "Global Discord application ID"; hint: "Use the public Application ID from the Discord Developer Portal."; value <=> root.global-id-draft; placeholder: "e.g. 123456789012345678"; enabled: root.modal == "" && !root.busy; edited(value) => { root.action("edit-global-id", value); } }
                         HorizontalLayout { cross-axis-alignment: center; spacing: 12px; alignment: start; UiButton { text: "Save application ID"; icon: "check"; primary: true; enabled: root.modal == "" && !root.busy && root.global-id-dirty; clicked => { root.action("save-global-id", ""); } } UiButton { enabled: root.modal == ""; text: "Open Developer Portal"; icon: "external"; clicked => { root.action("developer-portal", ""); } } }
-                        if root.global-id-dirty: Text { text: "Unsaved application ID. Save it here, or go live with a presence that uses the global ID."; color: #dcba7f; font-size: 11px; wrap: word-wrap; }
+                        if root.global-id-dirty: Text { text: "Unsaved application ID. Save it here, or go live with a presence that uses the global ID."; color: Colors.warning; font-size: 11px; wrap: word-wrap; }
                         Note { text: "One ID is enough for custom names, text, timers, and buttons. Separate IDs are useful when presences need different Discord applications or uploaded artwork libraries."; }
                     }
                 }
                 Rectangle {
-                    min-height: data-content.preferred-height; background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
+                    min-height: data-content.preferred-height; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
                     data-content := VerticalLayout {
                         padding: 24px; spacing: 22px;
                         SectionTitle { title: "Your data"; description: "Presences and applications are stored locally. Take a backup or move them to another device."; }
                         HorizontalLayout { cross-axis-alignment: center; spacing: 12px; alignment: start; UiButton { text: "Export workspace"; icon: "down"; enabled: root.modal == "" && !root.busy; clicked => { root.action("export", ""); } } UiButton { text: "Import workspace"; icon: "up"; enabled: root.modal == "" && !root.busy; clicked => { root.action("import", ""); } } }
                         Note { text: "Import replaces the current workspace. Export first if you want to keep your current profiles. Application time and archived entries are stored separately."; }
-                        Text { text: "Data folder\n" + root.data-path; color: #818181; font-size: 11px; wrap: word-wrap; }
+                        Text { text: "Data folder\n" + root.data-path; color: Colors.muted; font-size: 11px; wrap: word-wrap; }
                     }
                 }
                 Rectangle {
-                    min-height: 194px; background: #0a0a0a; border-width: 1px; border-color: #262626; border-radius: 12px;
-                    VerticalLayout { padding: 24px; spacing: 18px; Text { text: "About Presence Control"; color: #eeeeee; font-size: 15px; font-weight: Typography.title-weight; } HorizontalLayout { cross-axis-alignment: center; Text { text: "Version"; color: #818181; font-size: 12px; } Text { text: "0.1.0 · Rust Complete Rewrite"; color: #d5d5d5; font-size: 12px; horizontal-alignment: right; } } HorizontalLayout { cross-axis-alignment: center; Text { text: "Runtime"; color: #818181; font-size: 12px; } Text { text: "Native Rust · Slint"; color: #d5d5d5; font-size: 12px; horizontal-alignment: right; } } HorizontalLayout { cross-axis-alignment: center; Text { text: "Connection"; color: #818181; font-size: 12px; } Text { text: "Local Discord IPC"; color: #d5d5d5; font-size: 12px; horizontal-alignment: right; } } }
+                    min-height: 194px; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
+                    VerticalLayout { padding: 24px; spacing: 18px; Text { text: "About Presence Control"; color: Colors.heading; font-size: 15px; font-weight: Typography.title-weight; } HorizontalLayout { cross-axis-alignment: center; Text { text: "Version"; color: Colors.muted; font-size: 12px; } Text { text: root.app-version + " · Rust Complete Rewrite"; color: Colors.label; font-size: 12px; horizontal-alignment: right; } } HorizontalLayout { cross-axis-alignment: center; Text { text: "Runtime"; color: Colors.muted; font-size: 12px; } Text { text: "Native Rust · Slint"; color: Colors.label; font-size: 12px; horizontal-alignment: right; } } HorizontalLayout { cross-axis-alignment: center; Text { text: "Connection"; color: Colors.muted; font-size: 12px; } Text { text: "Local Discord IPC"; color: Colors.label; font-size: 12px; horizontal-alignment: right; } } }
                 }
             }
             Rectangle { min-height: 16px; background: transparent; }
-            Text { text: "Presence Control   v0.1.0"; color: #717171; font-size: 10px; horizontal-alignment: right; }
+            Text { text: "Presence Control   v" + root.app-version; color: Colors.muted; font-size: 10px; horizontal-alignment: right; }
         }
     }
 
@@ -607,12 +640,12 @@ export component MainWindow inherits Window {
         y: root.height - self.height - 24px;
         width: min(root.width - root.sidebar-width - 50px, 660px);
         height: toast-layout.preferred-height;
-        background: #1a1a1a; border-width: 1px; border-color: #444444; border-radius: 10px;
-        toast-layout := HorizontalLayout { cross-axis-alignment: center; padding: 15px; spacing: 13px; Glyph { name: "help"; colorize: #8bd5ad; } Text { text: root.message; color: #dddddd; font-size: 12px; wrap: word-wrap; } IconButton { enabled: root.modal == ""; icon: "close"; label: "Dismiss notification"; clicked => { root.action("dismiss-message", ""); } } }
+        background: Colors.popup; border-width: 1px; border-color: Colors.strong-line; border-radius: 10px;
+        toast-layout := HorizontalLayout { cross-axis-alignment: center; padding: 15px; spacing: 13px; Glyph { name: "help"; colorize: Colors.positive; } Text { text: root.message; color: Colors.label; font-size: 12px; wrap: word-wrap; } IconButton { enabled: root.modal == ""; icon: "close"; label: "Dismiss notification"; clicked => { root.action("dismiss-message", ""); } } }
     }
     Rectangle {
         visible: root.modal != "";
-        width: root.width; height: root.height; background: #000000b8;
+        width: root.width; height: root.height; background: Colors.overlay;
         TouchArea { }
         dialog-focus := FocusScope {
         enabled: root.modal != "";
@@ -621,11 +654,11 @@ export component MainWindow inherits Window {
         Rectangle {
             x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
             width: min(520px, root.width - 60px); height: modal-content.preferred-height;
-            border-width: 1px; border-color: #3a3a3a; border-radius: 14px; background: #111111;
+            border-width: 1px; border-color: Colors.strong-line; border-radius: 14px; background: Colors.raised;
             modal-content := VerticalLayout {
                 padding: 28px; spacing: 22px;
                 HorizontalLayout { cross-axis-alignment: center;
-                    Text { text: root.modal == "rule" ? "Application rule" : root.modal == "delete-profile" ? "Delete this presence?" : "You have unsaved changes"; color: #eeeeee; font-size: 22px; font-weight: Typography.title-weight; vertical-alignment: center; }
+                    Text { text: root.modal == "rule" ? "Application rule" : root.modal == "delete-profile" ? "Delete this presence?" : "You have unsaved changes"; color: Colors.heading; font-size: 22px; font-weight: Typography.title-weight; vertical-alignment: center; }
                     IconButton { icon: "close"; label: "Close dialog"; clicked => { root.action("modal-cancel", ""); } }
                 }
                 if root.modal == "rule": VerticalLayout {
@@ -633,18 +666,18 @@ export component MainWindow inherits Window {
                     Field { label: "Application name"; value <=> root.rule-form.name; placeholder: "e.g. Coding sessions"; edited(value) => { root.rule-edited("name", value); } }
                     Field { label: "Process name"; value <=> root.rule-form.process; placeholder: "e.g. Code.exe"; edited(value) => { root.rule-edited("process", value); } }
                     Field { label: "Window title contains (optional)"; value <=> root.rule-form.title-contains; placeholder: "Match part of the window title"; edited(value) => { root.rule-edited("titleContains", value); } }
-                    VerticalLayout { spacing: 9px; Text { text: "Presence"; color: #d5d5d5; font-size: 12px; } Choice { label: "Presence"; options: root.profile-names; current-index <=> root.rule-form.profile-index; selected(index) => { root.rule-edited("profileIndex", index); } } }
-                    HorizontalLayout { cross-axis-alignment: center; Text { text: "Enabled"; color: #d5d5d5; vertical-alignment: center; } Toggle { checked: root.rule-form.enabled; label: "Enable rule"; toggled => { root.rule-edited("enabled", root.rule-form.enabled ? "false" : "true"); } } }
+                    VerticalLayout { spacing: 9px; Text { text: "Presence"; color: Colors.label; font-size: 12px; } Choice { label: "Presence"; options: root.profile-names; current-index <=> root.rule-form.profile-index; selected(index) => { root.rule-edited("profileIndex", index); } } }
+                    HorizontalLayout { cross-axis-alignment: center; Text { text: "Enabled"; color: Colors.label; vertical-alignment: center; } Toggle { checked: root.rule-form.enabled; label: "Enable rule"; toggled => { root.rule-edited("enabled", root.rule-form.enabled ? "false" : "true"); } } }
                     HorizontalLayout { cross-axis-alignment: center; alignment: end; spacing: 10px; UiButton { text: "Cancel"; clicked => { root.action("modal-cancel", ""); } } UiButton { text: "Save application"; primary: true; enabled: !root.busy; clicked => { root.action("save-rule", ""); } } }
                 }
                 if root.modal == "delete-profile": VerticalLayout {
                     spacing: 24px;
-                    Text { text: "This removes “" + root.form.name + "” and its application rules from your workspace."; color: #a3a3a3; font-size: 13px; wrap: word-wrap; }
+                    Text { text: "This removes “" + root.form.name + "” and its application rules from your workspace."; color: Colors.secondary; font-size: 13px; wrap: word-wrap; }
                     HorizontalLayout { cross-axis-alignment: center; alignment: end; spacing: 10px; UiButton { text: "Keep presence"; clicked => { root.action("modal-cancel", ""); } } UiButton { text: "Delete presence"; danger: true; enabled: !root.busy; clicked => { root.action("confirm-delete-profile", ""); } } }
                 }
                 if root.modal != "rule" && root.modal != "delete-profile": VerticalLayout {
                     spacing: 24px;
-                    Text { text: "Save your edits before continuing, or discard them to return to the saved presence."; color: #a3a3a3; font-size: 13px; wrap: word-wrap; }
+                    Text { text: "Save your edits before continuing, or discard them to return to the saved presence."; color: Colors.secondary; font-size: 13px; wrap: word-wrap; }
                     HorizontalLayout { cross-axis-alignment: center; alignment: end; spacing: 10px; UiButton { text: "Cancel"; clicked => { root.action("modal-cancel", ""); } } UiButton { text: "Discard"; clicked => { root.action("discard-changes", ""); } } UiButton { text: "Save changes"; primary: true; enabled: !root.busy; clicked => { root.action("save-and-continue", ""); } } }
                 }
             }

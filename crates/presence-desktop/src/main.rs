@@ -13,7 +13,7 @@ mod worker_tests;
 use editor::Editor;
 use presence_core::{
     engine,
-    model::{AppRule, Config, RuntimeState},
+    model::{AppRule, Appearance, Config, RuntimeState},
     Backend,
 };
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -244,6 +244,7 @@ impl Host {
     }
     fn refresh_at(&mut self, ui: &MainWindow, now: i64) {
         ui.set_global_id(self.editor.config.application_id.clone().into());
+        ui.set_appearance(self.editor.config.appearance.as_str().into());
         self.refresh_artwork(ui);
         let query = ui.get_search().to_lowercase();
         ui.set_profiles(sync_model(
@@ -611,6 +612,19 @@ impl Host {
                         "Discord connection settings saved.",
                     );
                 }
+                "set-appearance" => {
+                    let appearance = match argument {
+                        "dark" => Appearance::Dark,
+                        "light" => Appearance::Light,
+                        "system" => Appearance::System,
+                        _ => return Err("Choose Dark, Light, or System for the appearance.".into()),
+                    };
+                    if appearance != self.editor.config.appearance {
+                        let mut config = self.editor.config.clone();
+                        config.appearance = appearance;
+                        self.save(ui, config, None, false, "Appearance saved.");
+                    }
+                }
                 "new-rule" | "edit-rule" | "add-detected" => {
                     let mut rule = if action == "edit-rule" {
                         self.editor
@@ -846,6 +860,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (sender, commands) = unbounded_channel();
     executor.spawn(worker(backend.clone(), commands, updates.clone()));
     let ui = MainWindow::new()?;
+    ui.set_app_version(env!("CARGO_PKG_VERSION").into());
     ui.on_rule_drag_data(rule_drag_data);
     ui.on_rule_drag_id(rule_drag_id);
     if smoke_root.is_none() {

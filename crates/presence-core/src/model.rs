@@ -50,6 +50,25 @@ pub struct AppRule {
     pub extra: serde_json::Map<String, Value>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    Dark,
+    Light,
+    System,
+}
+
+impl Appearance {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Dark => "dark",
+            Self::Light => "light",
+            Self::System => "system",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
@@ -59,6 +78,8 @@ pub struct Config {
     pub rules: Vec<AppRule>,
     pub automatic: bool,
     pub record_time: bool,
+    #[serde(default)]
+    pub appearance: Appearance,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,
 }
@@ -254,6 +275,7 @@ pub fn default_config() -> Config {
         rules: Vec::new(),
         automatic: false,
         record_time: false,
+        appearance: Appearance::Dark,
         extra: Default::default(),
     }
 }

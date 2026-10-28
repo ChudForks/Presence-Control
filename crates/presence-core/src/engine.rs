@@ -263,6 +263,11 @@ pub fn validate_config(input: &Value) -> Result<Config, String> {
             .ok_or("The global Discord application ID must contain 17–20 digits.")?
             .to_owned(),
     };
+    let appearance = match input.get("appearance") {
+        None => Appearance::Dark,
+        Some(value) => serde_json::from_value(value.clone())
+            .map_err(|_| "Choose Dark, Light, or System for the appearance.")?,
+    };
     let mut ids = HashSet::new();
     let mut normalized_profiles = Vec::new();
     for profile in profiles.unwrap() {
@@ -406,6 +411,7 @@ pub fn validate_config(input: &Value) -> Result<Config, String> {
             .get("recordTime")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        appearance,
         extra: extra_fields(
             input,
             &[
@@ -415,6 +421,7 @@ pub fn validate_config(input: &Value) -> Result<Config, String> {
                 "rules",
                 "automatic",
                 "recordTime",
+                "appearance",
             ],
         ),
     })
@@ -865,6 +872,7 @@ mod tests {
         let mut legacy = config_json();
         legacy.as_object_mut().unwrap().remove("applicationId");
         legacy.as_object_mut().unwrap().remove("recordTime");
+        legacy.as_object_mut().unwrap().remove("appearance");
         for profile in legacy["profiles"].as_array_mut().unwrap() {
             profile.as_object_mut().unwrap().remove("progress");
             profile.as_object_mut().unwrap().remove("duration");
@@ -872,6 +880,7 @@ mod tests {
         let migrated = validate_config(&legacy).unwrap();
         assert_eq!(migrated.application_id, "");
         assert!(!migrated.record_time);
+        assert_eq!(migrated.appearance, Appearance::Dark);
         assert!(migrated.profiles[0].elapsed);
         assert!(!migrated.profiles[0].progress);
         assert_eq!(migrated.profiles[0].duration, "3:00");
@@ -887,6 +896,28 @@ mod tests {
                 .unwrap()
                 .extend(patch.as_object().unwrap().clone());
             assert!(validate_config(&invalid).unwrap_err().contains("timer"));
+        }
+    }
+
+    #[test]
+    fn appearance_survives_workspace_round_trips_and_rejects_invalid_values() {
+        for mode in [Appearance::Dark, Appearance::Light, Appearance::System] {
+            let mut config = config_json();
+            config["appearance"] = json!(mode.as_str());
+            let saved = validate_config(&config).unwrap();
+            assert_eq!(saved.appearance, mode);
+            assert!(!saved.extra.contains_key("appearance"));
+            assert_eq!(
+                validate_config(&serde_json::to_value(saved).unwrap())
+                    .unwrap()
+                    .appearance,
+                mode
+            );
+        }
+        for invalid in [json!(null), json!(true), json!(1), json!("auto"), json!({})] {
+            let mut config = config_json();
+            config["appearance"] = invalid;
+            assert!(validate_config(&config).unwrap_err().contains("appearance"));
         }
     }
 

@@ -66,6 +66,44 @@ fn key(window: &slint::Window, text: SharedString) {
 }
 
 #[test]
+fn appearance_selector_supports_clicks_arrow_keys_and_busy_state() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+    slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).unwrap();
+    let ui = MainWindow::new().unwrap();
+    window.set_size(PhysicalSize::new(1040, 720));
+    ui.set_page(4);
+    let selections = Rc::new(RefCell::new(Vec::new()));
+    let recorded = selections.clone();
+    let weak = ui.as_weak();
+    ui.on_action(move |action, mode| {
+        assert_eq!(action, "set-appearance");
+        recorded.borrow_mut().push(mode.clone());
+        weak.upgrade().unwrap().set_appearance(mode);
+    });
+    ui.show().unwrap();
+    window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+    draw(&window);
+
+    click(ui.window(), 495.0, 288.0);
+    assert_eq!(ui.get_appearance(), "light");
+    click(ui.window(), 636.0, 288.0);
+    assert_eq!(ui.get_appearance(), "system");
+    key(ui.window(), Key::LeftArrow.into());
+    assert_eq!(ui.get_appearance(), "light");
+    key(ui.window(), Key::RightArrow.into());
+    assert_eq!(ui.get_appearance(), "system");
+
+    ui.set_busy(true);
+    draw(&window);
+    click(ui.window(), 350.0, 288.0);
+    assert_eq!(
+        selections.borrow().len(),
+        4,
+        "saving disables further changes"
+    );
+}
+
+#[test]
 fn first_click_activates_controls_and_transfers_keyboard_focus() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).unwrap();

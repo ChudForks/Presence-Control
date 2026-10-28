@@ -1049,6 +1049,75 @@ impl State {
                     ui.get_message().is_empty(),
                     "Native status notification dismisses itself after five seconds",
                 )?;
+                self.check(
+                    ui.get_dark_appearance(),
+                    "Existing workspaces start in OLED dark mode",
+                )?;
+                ui.set_page(4);
+                Self::action(ui, "set-appearance", "light");
+            }
+            44 => {
+                self.check(
+                    self.config()?.appearance == Appearance::Light && !ui.get_dark_appearance(),
+                    "Light mode saves through the native host and updates the interface",
+                )?;
+                self.snapshot(ui, "light-settings")?;
+                ui.set_page(0);
+                ui.set_editor_tab(0);
+            }
+            45 => {
+                self.snapshot(ui, "light-studio")?;
+                ui.set_editor_tab(1);
+            }
+            46 => {
+                self.snapshot(ui, "light-artwork")?;
+                ui.set_page(1);
+            }
+            47 => {
+                self.snapshot(ui, "light-integrations")?;
+                Self::action(ui, "new-rule", "");
+            }
+            48 => {
+                self.snapshot(ui, "light-rule-dialog")?;
+                Self::action(ui, "modal-cancel", "");
+                ui.set_page(2);
+            }
+            49 => {
+                self.snapshot(ui, "light-activity")?;
+                ui.set_page(3);
+            }
+            50 => {
+                self.snapshot(ui, "light-archive")?;
+                ui.set_page(4);
+                ui.window().set_size(slint::PhysicalSize::new(800, 620));
+            }
+            51 => {
+                self.snapshot(ui, "light-settings-narrow")?;
+                Self::action(ui, "set-appearance", "system");
+            }
+            52 => {
+                self.check(
+                    self.config()?.appearance == Appearance::System
+                        && ui.get_appearance() == "system",
+                    "System mode persists the preference rather than the resolved OS color",
+                )?;
+                let (config, warnings) = host.borrow().executor.block_on(async {
+                    let (backend, warnings) = Backend::open(&self.root, Arc::new(|_| {})).await;
+                    let config = backend.config().await;
+                    backend.shutdown().await?;
+                    Ok::<_, String>((config, warnings))
+                })?;
+                self.check(
+                    warnings.is_empty() && config.appearance == Appearance::System,
+                    "A fresh backend reloads the saved appearance without data recovery",
+                )?;
+                Self::action(ui, "set-appearance", "dark");
+            }
+            53 => {
+                self.check(
+                    self.config()?.appearance == Appearance::Dark && ui.get_dark_appearance(),
+                    "Dark mode restores the OLED black palette",
+                )?;
                 self.outcome = Some(Ok(()));
                 self.report();
                 eprintln!(

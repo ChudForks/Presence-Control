@@ -23,6 +23,112 @@ impl Platform for TestPlatform {
 }
 
 #[test]
+fn appearance_follows_live_system_changes_and_explicit_modes_override_them() {
+    use slint::language::ColorScheme;
+    // Simulate the same context update used by the pinned Winit backend when
+    // Windows sends ThemeChanged, without modifying the user's Windows settings.
+    use slint::private_unstable_api::re_exports::WindowInner;
+
+    slint::platform::set_platform(Box::new(TestPlatform {
+        window: MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer),
+        elapsed: Rc::new(Cell::new(Duration::ZERO)),
+    }))
+    .unwrap();
+    let ui = MainWindow::new().unwrap();
+    let context = WindowInner::from_pub(ui.window()).context().clone();
+    context.set_color_scheme(ColorScheme::Light);
+    assert_eq!(ui.get_appearance(), "dark");
+    assert!(
+        ui.get_dark_appearance(),
+        "OLED dark is the default even on a light system"
+    );
+
+    ui.set_appearance("system".into());
+    slint::platform::update_timers_and_animations();
+    assert!(!ui.get_dark_appearance());
+    context.set_color_scheme(ColorScheme::Dark);
+    assert!(
+        ui.get_dark_appearance(),
+        "system changes apply without restarting"
+    );
+    context.set_color_scheme(ColorScheme::Light);
+    assert!(!ui.get_dark_appearance());
+
+    ui.set_appearance("light".into());
+    slint::platform::update_timers_and_animations();
+    context.set_color_scheme(ColorScheme::Dark);
+    assert!(
+        !ui.get_dark_appearance(),
+        "explicit light ignores system changes"
+    );
+    ui.set_appearance("dark".into());
+    slint::platform::update_timers_and_animations();
+    context.set_color_scheme(ColorScheme::Light);
+    assert!(
+        ui.get_dark_appearance(),
+        "explicit dark ignores system changes"
+    );
+}
+
+#[test]
+fn appearance_save_preserves_drafts_and_applies_only_after_persistence_succeeds() {
+    slint::platform::set_platform(Box::new(TestPlatform {
+        window: MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer),
+        elapsed: Rc::new(Cell::new(Duration::ZERO)),
+    }))
+    .unwrap();
+    let ui = MainWindow::new().unwrap();
+    let executor = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (sender, mut commands) = unbounded_channel();
+    let (updates, _receiver) = mpsc::channel();
+    let mut host = Host {
+        editor: Editor::new(Config::default()),
+        runtime: RuntimeState::default(),
+        sender,
+        updates,
+        executor: executor.handle().clone(),
+        pending: None,
+        rule: None,
+        resume_after_save: false,
+        shutting_down: false,
+        artwork: HashMap::new(),
+        artwork_requests: HashMap::new(),
+        artwork_retry_after: HashMap::new(),
+        notification_timer: slint::Timer::default(),
+    };
+    host.editor
+        .set_field("details", "Keep this unsaved profile draft")
+        .unwrap();
+    ui.set_global_id_draft("123456789012345678".into());
+    host.refresh(&ui);
+    host.action(&ui, "set-appearance", "light");
+    let Command::Save {
+        config, selected, ..
+    } = commands.try_recv().unwrap()
+    else {
+        panic!("expected appearance save");
+    };
+    assert_eq!(config.appearance, Appearance::Light);
+    assert!(selected.is_none());
+    assert!(
+        ui.get_dark_appearance(),
+        "a pending or failed save keeps the saved theme"
+    );
+    assert_eq!(host.editor.config.appearance, Appearance::Dark);
+
+    host.editor.accept(config, None);
+    host.refresh(&ui);
+    slint::platform::update_timers_and_animations();
+    assert!(!ui.get_dark_appearance());
+    assert_eq!(host.editor.draft.details, "Keep this unsaved profile draft");
+    assert!(host.editor.dirty());
+    assert_eq!(ui.get_global_id_draft(), "123456789012345678");
+}
+
+#[test]
 fn activity_clock_updates_live_totals_and_moves_only_finished_sessions_into_history() {
     slint::platform::set_platform(Box::new(TestPlatform {
         window: MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer),

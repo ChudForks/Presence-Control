@@ -2,6 +2,22 @@
 
 Finalized October 24, 2026, on Windows with Rust 1.98.1 and Slint 1.18.1. The application requires Rust 1.92 or later.
 
+## Windows installer 0.1.2 — October 28, 2026
+
+The appearance release is packaged as `release/Presence-Control-0.1.2-windows-x64-setup.exe` using NSIS 3.13. Both workspace crates, the portable executable, and the installer use version **0.1.2**. Settings and the workspace footer now display the Cargo package version. This release includes the native repaint backport and Dark/Light/System appearance settings.
+
+Verification passed: **89 Rust tests**, Clippy with `-D warnings`, formatting, **28 isolated installer lifecycle checks**, and **77 installed native workflow checks**. The installer report is `artifacts/installer-test/38b5e34c-7a04-4468-b1ec-254508e18b14/installer-report.json`; the installed workflow report is `artifacts/native-smoke/58db485d-eb93-4759-a424-0c1dbd5e1398/smoke-report.json`. Installation, locked-file refusal, reinstallation, bundled runtime loading, shortcuts, registration, and uninstall passed. Normal application data and additional installation-directory files were preserved.
+
+Setup is **6,501,985 bytes**, SHA-256 `d1b0f61909ac26e9ad83ca0df420b2713b556a8e2d12bec4b760006fe2a723f2`. The portable executable is **17,632,256 bytes**, SHA-256 `7e320e7218ea0a9fb748d24f18a073554d14110a0e7086568e141eff61ba0211`. All 15 entries in `release/SHA256SUMS.txt` were verified.
+
+## Appearance update — October 28, 2026
+
+- `cargo test --workspace`: **89 passed** (58 core, 31 desktop). New checks cover legacy OLED dark defaults, appearance validation and workspace round trips, live system-theme changes, explicit overrides, preservation of unsaved drafts, and pointer/keyboard interaction with the mode selector.
+- `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `git diff --check`: passed.
+- Native smoke: **77 checks passed** for both the debug build and the updated portable release. The release report is `artifacts/native-smoke/ade12b8c-0455-4849-8e5f-24f61e7e0e4a/smoke-report.json`. This includes saving Light/System/Dark, reloading the preference through a fresh backend, and restoring OLED dark.
+- Reviewed native light-theme screenshots of Settings, the studio, application rules, and the 800×620 Settings layout, plus the OLED dark Settings screen. Additional captures cover artwork, integrations, activity, and archives.
+- `cargo build --release -p presence-desktop`: passed. `release/presence-control.exe` matches the compiled release, and its entry in `release/SHA256SUMS.txt` was updated. SHA-256: `8ddd21ca5b64d7488234620744eb5f35dd45d26c319493d365858ec48de053b3`.
+
 ## Completed checks
 
 | Command or inspection | Verified result |
@@ -124,8 +140,36 @@ The tested release passed all 72 native checks in `artifacts/native-smoke/61ad57
 
 The portable copy is `release/presence-control.exe`, 17,502,208 bytes, with SHA-256 `eed1c7ce0bbdf9118c0420d63e47d9bec121a7b2053c6388607d502bae04b01a`, matching the tested release output and `release/SHA256SUMS.txt`. Its predecessor is preserved as `release/presence-control-before-linked-archive-20261024-124151.exe`. Relaunch the application to use this behavior.
 
+## Windows installer 0.1.0 — October 24, 2026
+
+`scripts/build-installer.ps1` builds the native application with Cargo's locked dependency tree and packages it with NSIS. The Windows x64 installer is `release/Presence-Control-0.1.0-windows-x64-setup.exe`. Its version comes from `presence-desktop/Cargo.toml`, and `release/SHA256SUMS.txt` covers setup, the executable, bundled runtime DLLs, and accompanying documentation. This build is unsigned.
+
+The executable's PE import table requires `VCRUNTIME140.dll` and Windows system libraries. Setup includes the x64 Microsoft VC runtime beside the executable, with no runtime download, elevation, or separate prerequisite installation. Module inspection during the installed smoke run confirmed that the bundled `vcruntime140.dll` was loaded.
+
+The installer lifecycle report is `artifacts/installer-test/6464badb-5548-4da3-b177-a7a7e2054271/installer-report.json`: **28 checks passed**. Coverage includes a destination containing spaces and Unicode, binary/runtime hashes, Windows Installed apps registration, correctly quoted uninstall commands, the Start menu shortcut, default optional-desktop behavior, locked-file refusal for both upgrade and uninstall, reusing a registered custom directory on reinstall, and full removal of the owned payload and registry entries. Additional files in the installation directory and normal application data were preserved. Uninstall deletes explicit payload filenames and uses only a nonrecursive directory removal.
+
+The installed executable also completed all **72 native workflow checks** using an isolated smoke workspace. The unchanged application passed **85 workspace tests**. The release executable remains identical to the previously tested Rust build. No computer-use automation was used to operate wizard pages. Interactive wizard layout, the optional desktop shortcut, and a clean second PC check remain in [manual-testing.md](manual-testing.md).
+
+## Version 0.1.1 Windows repaint correction — October 24, 2026
+
+The installed and portable 0.1.0 executables had identical SHA-256 hashes. The reported see-through/stale client areas were investigated as a Windows repaint defect shared by those binaries.
+
+The 0.1.1 build vendors `i-slint-backend-winit` 1.18.1 and backports [Slint PR #13568](https://github.com/slint-ui/slint/pull/13568). Only `winitwindowadapter.rs` differs from the published crate's implementation. Before drawing, the Windows backend reads `GetUpdateRect` while winit still preserves it, converts the physical rectangle to logical coordinates, and marks it dirty. OS-invalidated pixels are repainted even when the application's state has not changed. Ordinary internal redraw requests without an update rectangle retain partial rendering. The existing typography renderer patch remains in place.
+
+The isolated `repaint_probe` executable paints fault pixels into its own presented window using GDI, calls Windows `InvalidateRect`, and compares actual client-area pixels after the normal event loop handles the repaint. No Slint snapshot is taken to validate recovery, since that would redraw the scene independently and could hide the bug. It checks partial, bottom-right, and full invalidation, including boundary pixels to catch fractional-scale rounding fringes.
+
+`artifacts/repaint-before.json` records the unpatched backend failing at 100%, 125%, and 150% scaling. `artifacts/repaint-0.1.1.json` records the corrected backend passing all nine cases across the same three scaling levels. The probe uses an isolated window with no configuration or Discord connection. Original monitor-crossing and snap gestures remain in the manual checklist.
+
+Both workspace crates and the Cargo lockfile now use application version **0.1.1**. The new installer is `release/Presence-Control-0.1.1-windows-x64-setup.exe`. Installer lifecycle verification can use a temporary registration/shortcut identity (`scripts/test-installer.ps1 -Isolated`) while the user's normal application is installed.
+
+Final verification passed: **85 workspace tests**, **nine native repaint cases**, **28 isolated installer lifecycle checks**, and **72 installed native workflow checks**. Clippy with `-D warnings`, formatting, and whitespace checks passed. The installer report is `artifacts/installer-test/c3534d33-4407-4ef2-a37e-e9e89a7d6e7e/installer-report.json`; the installed workflow report is `artifacts/native-smoke/11680500-1abd-46eb-b9eb-cc375a999697/smoke-report.json`. Normal application data remained unchanged during verification.
+
+Both the portable executable and setup expose FileVersion/ProductVersion **0.1.1**. Setup is 6,476,198 bytes; the portable executable is 17,502,720 bytes. All 15 entries in the current `release/SHA256SUMS.txt` were verified, including setup, the patched executable, runtime files, and documentation. The existing installed 0.1.0 copy can be closed and upgraded using the new installer.
+
+The published upstream backend package omits its monorepo Slint test dependency, so its standalone library test harness is unavailable in this workspace. The backport is exercised through the actual backend linked by the application's native pixel probe and smoke run instead.
+
 ## Practical limits
 
 The renderer still uses grayscale antialiasing, not WebView2/ClearType RGB subpixel output, so pixel-for-pixel equality with the older application is not established.
 
-Callback smoke checks establish the native host/backend path and persisted behavior. They do not simulate every mouse/keyboard interaction or automatically establish visual fidelity; screenshots require review. Real Discord publishing needs an actual application ID and Discord desktop and has not been verified here. Native import/export dialogs are supplied by the Windows Rust host; their complete manual interaction is outside the callback smoke coverage. Installer and tray behavior are not implemented.
+Callback smoke checks establish the native host/backend path and persisted behavior. They do not simulate every mouse/keyboard interaction or automatically establish visual fidelity; screenshots require review. Real Discord publishing needs an actual application ID and Discord desktop and has not been verified here. Native import/export dialogs are supplied by the Windows Rust host; their complete manual interaction is outside the callback smoke coverage. Tray behavior is not implemented.
