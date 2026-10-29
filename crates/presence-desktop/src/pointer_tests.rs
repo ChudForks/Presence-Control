@@ -104,6 +104,53 @@ fn appearance_selector_supports_clicks_arrow_keys_and_busy_state() {
 }
 
 #[test]
+fn profile_inputs_pause_while_backend_work_is_pending() {
+    let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
+    slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).unwrap();
+    let ui = MainWindow::new().unwrap();
+    ui.set_form(profile_form(&default_config().profiles[0]));
+    let edits = Rc::new(RefCell::new(Vec::new()));
+    let recorded = edits.clone();
+    ui.on_field_edited(move |field, value| recorded.borrow_mut().push((field, value)));
+    window.set_size(PhysicalSize::new(1470, 1000));
+    ui.show().unwrap();
+    window.dispatch_event(WindowEvent::WindowActiveChanged(true));
+    draw(&window);
+
+    click(ui.window(), 350.0, 605.0);
+    key(ui.window(), "X".into());
+    assert_eq!(
+        edits.borrow().len(),
+        1,
+        "profile field accepts normal edits"
+    );
+    assert_eq!(edits.borrow()[0].0, "name");
+    let name = ui.get_form().name;
+
+    ui.set_busy(true);
+    draw(&window);
+    key(ui.window(), "Y".into());
+    click(ui.window(), 350.0, 605.0);
+    key(ui.window(), "Y".into());
+    assert_eq!(
+        edits.borrow().len(),
+        1,
+        "busy fields cannot create ignored edits"
+    );
+    assert_eq!(ui.get_form().name, name);
+
+    ui.set_busy(false);
+    draw(&window);
+    click(ui.window(), 350.0, 605.0);
+    key(ui.window(), "Z".into());
+    assert_eq!(
+        edits.borrow().len(),
+        2,
+        "editing resumes after backend work"
+    );
+}
+
+#[test]
 fn first_click_activates_controls_and_transfers_keyboard_focus() {
     let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
     slint::platform::set_platform(Box::new(TestPlatform(window.clone()))).unwrap();

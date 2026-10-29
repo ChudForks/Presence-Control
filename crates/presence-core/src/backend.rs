@@ -141,9 +141,12 @@ impl Backend {
         let mut service = self.running_service().await?;
         let mut next = service.config.clone();
         next.automatic = false;
-        self.inner.store.save_config(&next)?;
+        let saved = self.inner.store.save_config(&next);
         service.config = next;
-        service.stop().await
+        // Stopping presence must still work when the data folder is unwritable.
+        // Return a save failure only after automatic retries and RPC are stopped.
+        let stopped = service.stop().await;
+        saved.and(stopped)
     }
 
     pub async fn scan(&self) -> Result<Vec<DetectedApp>, String> {
@@ -255,5 +258,39 @@ mod tests {
         assert!(other_ui.stop().await.unwrap_err().contains("shut down"));
         assert!(other_ui.scan().await.unwrap_err().contains("shut down"));
         assert!(!root.path().join("config.json").exists());
+    }
+
+    #[tokio::test]
+    async fn stop_still_clears_presence_when_disabling_automatic_cannot_be_saved() {
+        let root = tempfile::tempdir().unwrap();
+        let (backend, _) = Backend::open(root.path(), Arc::new(|_| {})).await;
+        let mut config = backend.config().await;
+        config.automatic = true;
+        backend
+            .save_config(&serde_json::to_value(&config).unwrap())
+            .await
+            .unwrap();
+        {
+            let mut service = backend.inner.service.lock().await;
+            // A manual activity with automatic mode enabled must remain stopped,
+            // including when it is already disconnected from Discord.
+            service.state.mode = Some("manual".into());
+            service.state.active_profile_id = Some(config.profiles[0].id.clone());
+        }
+        let config_path = root.path().join("config.json");
+        std::fs::remove_file(&config_path).unwrap();
+        std::fs::create_dir(&config_path).unwrap();
+
+        assert!(backend.stop().await.unwrap_err().contains("local data"));
+        assert!(!backend.config().await.automatic);
+        let runtime = backend.runtime().await;
+        assert_eq!(runtime.connection, "disconnected");
+        assert!(runtime.active_profile_id.is_none());
+        assert!(runtime.mode.is_none());
+
+        std::fs::remove_dir(&config_path).unwrap();
+        backend.stop().await.unwrap();
+        assert!(!Store::load(root.path()).config.automatic);
+        backend.shutdown().await.unwrap();
     }
 }

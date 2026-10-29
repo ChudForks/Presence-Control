@@ -239,6 +239,46 @@ impl Host {
     fn refresh_form(&self, ui: &MainWindow) {
         ui.set_form(profile_form(&self.editor.draft));
     }
+    fn accept_saved(&mut self, ui: &MainWindow, config: Config, selected: Option<&str>) {
+        let saved_rule = ui.get_modal() == "rule"
+            && self
+                .rule
+                .as_ref()
+                .is_some_and(|rule| config.rules.iter().any(|saved| saved == rule));
+        let old_id = self.editor.config.application_id.clone();
+        self.editor.accept(config, selected);
+        if old_id != self.editor.config.application_id
+            || ui.get_global_id_draft().trim() == self.editor.config.application_id
+        {
+            ui.set_global_id_draft(self.editor.config.application_id.clone().into());
+        }
+        if selected.is_some() {
+            self.refresh_form(ui);
+        }
+        if saved_rule {
+            self.rule = None;
+            ui.set_modal("".into());
+        }
+    }
+    fn finish(&mut self, ui: &MainWindow, result: Result<String, String>) {
+        ui.set_busy(false);
+        ui.set_scanning(false);
+        match result {
+            Ok(message) => {
+                if !message.is_empty() {
+                    notify(ui, &self.notification_timer, message);
+                }
+                if self.resume_after_save {
+                    self.resume_after_save = false;
+                    self.continue_pending(ui);
+                }
+            }
+            Err(error) => {
+                self.resume_after_save = false;
+                self.error(ui, error);
+            }
+        }
+    }
     fn refresh(&mut self, ui: &MainWindow) {
         self.refresh_at(ui, now_ms());
     }
@@ -376,34 +416,38 @@ impl Host {
             }
             .into(),
         );
-        for (kind, target) in [("event", 0), ("application", 1), ("session", 2), ("all", 3)] {
-            let rows = editor::activity_rows(
-                &self.editor.config,
-                &self.runtime,
-                kind,
-                "",
-                target == 3,
-                now,
-            )
-            .into_iter()
-            .map(|row| ActivityRow {
-                id: row.id.into(),
-                kind: row.kind.into(),
-                title: row.title.into(),
-                subtitle: row.subtitle.into(),
-                time: row.time.into(),
-                detail: row.detail.into(),
-                locked: row.locked,
-                tracked: row.tracked,
-            })
-            .collect();
-            match target {
-                0 => ui.set_events(sync_model(ui.get_events(), rows)),
-                1 => ui.set_totals(sync_model(ui.get_totals(), rows)),
-                2 => ui.set_sessions(sync_model(ui.get_sessions(), rows)),
-                _ => ui.set_archived(sync_model(ui.get_archived(), rows)),
-            }
+        let activity_row = |row: editor::ActivityRow| ActivityRow {
+            id: row.id.into(),
+            kind: row.kind.into(),
+            title: row.title.into(),
+            subtitle: row.subtitle.into(),
+            time: row.time.into(),
+            detail: row.detail.into(),
+            locked: row.locked,
+            tracked: row.tracked,
+        };
+        let (mut events, mut totals, mut sessions) = (Vec::new(), Vec::new(), Vec::new());
+        // Project current history once: resolving total names also scans the
+        // permanent archive, so repeating it for each section grows expensive.
+        for row in editor::activity_rows(&self.editor.config, &self.runtime, "all", "", false, now)
+        {
+            let target = match row.kind.as_str() {
+                "event" => &mut events,
+                "application" => &mut totals,
+                "session" => &mut sessions,
+                _ => continue,
+            };
+            target.push(activity_row(row));
         }
+        ui.set_events(sync_model(ui.get_events(), events));
+        ui.set_totals(sync_model(ui.get_totals(), totals));
+        ui.set_sessions(sync_model(ui.get_sessions(), sessions));
+        let archived =
+            editor::activity_rows(&self.editor.config, &self.runtime, "all", "", true, now)
+                .into_iter()
+                .map(activity_row)
+                .collect();
+        ui.set_archived(sync_model(ui.get_archived(), archived));
     }
     fn refresh_artwork(&mut self, ui: &MainWindow) {
         let query = ui.get_search().to_lowercase();
@@ -655,8 +699,8 @@ impl Host {
                     let rule = self.rule.clone().ok_or("No rule is being edited.")?;
                     let config = self.editor.candidate_rule_upsert(rule)?;
                     self.save(ui, config, None, false, "Application rule saved.");
-                    ui.set_modal("".into());
-                    self.rule = None;
+                    // Keep the dialog and draft until persistence succeeds so
+                    // a failed write can be retried without re-entering the rule.
                 }
                 "delete-rule" | "toggle-rule" | "rule-up" | "rule-down" => {
                     let config = match action {
@@ -741,16 +785,16 @@ async fn worker(
                 }
                 Err(error) => Err(error),
             },
-            Command::Stop => match backend.stop().await {
-                Ok(()) => {
-                    let _ = updates.send(Update::Saved {
-                        config: Box::new(backend.config().await),
-                        selected: None,
-                    });
-                    Ok("Presence stopped. Automatic mode is off.".into())
-                }
-                Err(error) => Err(error),
-            },
+            Command::Stop => {
+                let result = backend.stop().await;
+                // Stopping disables automatic mode even if persistence or the
+                // Discord clear fails. Reflect the current in-memory setting.
+                let _ = updates.send(Update::Saved {
+                    config: Box::new(backend.config().await),
+                    selected: None,
+                });
+                result.map(|()| "Presence stopped. Automatic mode is off.".into())
+            }
             Command::Scan => backend
                 .scan()
                 .await
@@ -919,6 +963,9 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     ui.on_rule_edited(move |field, value| {
         if let Some(ui) = weak.upgrade() {
             let mut host = handler.borrow_mut();
+            if ui.get_busy() {
+                return;
+            }
             let profile_id = if field == "profileIndex" {
                 value
                     .parse::<usize>()
@@ -968,29 +1015,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             match update {
                 Update::Runtime(runtime) => { host.runtime = *runtime; changed = true; }
                 Update::Saved { config, selected } => {
-                    let old_id = host.editor.config.application_id.clone();
-                    host.editor.accept(*config, selected.as_deref());
-                    if old_id != host.editor.config.application_id
-                        || ui.get_global_id_draft().trim() == host.editor.config.application_id
-                    {
-                        ui.set_global_id_draft(host.editor.config.application_id.clone().into());
-                    }
-                    if selected.is_some() { host.refresh_form(&ui); }
+                    host.accept_saved(&ui, *config, selected.as_deref());
                     changed = true;
                 }
                 Update::Finished(result) => {
-                    ui.set_busy(false);
-                    ui.set_scanning(false);
-                    match result {
-                        Ok(message) => {
-                            if !message.is_empty() { notify(&ui, &host.notification_timer, message); }
-                            if host.resume_after_save {
-                                host.resume_after_save = false;
-                                host.continue_pending(&ui);
-                            }
-                        }
-                        Err(error) => { host.resume_after_save = false; host.error(&ui, error); }
-                    }
+                    host.finish(&ui, result);
                     changed = true;
                 }
                 Update::Shutdown(result) => { if let Err(error) = result { host.shutting_down = false; ui.set_busy(false); host.error(&ui, format!("Could not save application time: {error}. Close again to retry.")); } else { let _ = slint::quit_event_loop(); } }

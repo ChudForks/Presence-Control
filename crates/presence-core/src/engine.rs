@@ -27,14 +27,16 @@ fn js_len(value: &str) -> usize {
 }
 
 fn render_text(value: &str, metadata: Option<&Metadata>) -> String {
-    // Discord's bound in the original renderer is 128 UTF-16 code units.
-    // Rust strings cannot contain an unpaired surrogate; lossily decoding a
-    // sliced pair displays the same replacement glyph as a browser does.
-    let units: Vec<u16> = resolve_template(value, metadata)
-        .encode_utf16()
-        .take(128)
-        .collect();
-    String::from_utf16_lossy(&units)
+    // Count UTF-16 units while retaining complete Unicode scalars, so a
+    // template expansion cannot split an emoji at the 128-unit boundary.
+    let mut units = 0;
+    resolve_template(value, metadata)
+        .chars()
+        .take_while(|character| {
+            units += character.len_utf16();
+            units <= 128
+        })
+        .collect()
 }
 
 pub fn resolve_template(value: &str, metadata: Option<&Metadata>) -> String {
@@ -393,7 +395,8 @@ pub fn validate_config(input: &Value) -> Result<Config, String> {
                 ],
             ),
         };
-        if trim(&rule.process).is_empty()
+        if rule.id.is_empty()
+            || trim(&rule.process).is_empty()
             || !ids.contains(&rule.profile_id)
             || !rule_ids.insert(rule.id.clone())
         {
@@ -591,11 +594,9 @@ pub fn validate_archive_data(input: &Value) -> Result<ArchiveData, String> {
 
 pub fn build_activity(profile: &Profile, metadata: Option<&Metadata>, since: i64) -> Value {
     let mut activity = Map::new();
-    if !trim(&profile.app_name).is_empty() {
-        activity.insert(
-            "name".into(),
-            render_text(&profile.app_name, metadata).into(),
-        );
+    let name = render_text(&profile.app_name, metadata);
+    if !name.is_empty() {
+        activity.insert("name".into(), name.into());
     }
     activity.insert("type".into(), profile.r#type.into());
     for (key, value) in [("details", &profile.details), ("state", &profile.state)] {
@@ -776,6 +777,38 @@ mod tests {
         assert_eq!(build_activity(&profile, None, 0)["details"], "{{unknown}}");
         profile.details = "{{title}}".into();
         assert!(build_activity(&profile, None, 0).get("details").is_none());
+        profile.app_name = "{{title}}".into();
+        assert!(build_activity(&profile, None, 0).get("name").is_none());
+    }
+
+    #[test]
+    fn expanded_activity_text_preserves_unicode_at_the_utf16_limit() {
+        let mut profile = default_config().profiles.remove(0);
+        profile.app_name = "{{title}}".into();
+        profile.details = "{{title}}".into();
+        profile.state = "{{title}}".into();
+        profile.large_text = "{{title}}".into();
+        profile.small_text = "{{title}}".into();
+        for (title, expected) in [
+            (format!("{}🎵", "a".repeat(127)), "a".repeat(127)),
+            (
+                format!("{}🎵tail", "a".repeat(126)),
+                format!("{}🎵", "a".repeat(126)),
+            ),
+            ("🎵".repeat(65), "🎵".repeat(64)),
+        ] {
+            let metadata = Metadata {
+                title,
+                ..Default::default()
+            };
+            let activity = build_activity(&profile, Some(&metadata), 0);
+            for field in ["name", "details", "state"] {
+                assert_eq!(activity[field], expected, "{field}");
+            }
+            for field in ["large_text", "small_text"] {
+                assert_eq!(activity["assets"][field], expected, "{field}");
+            }
+        }
     }
 
     #[test]
@@ -934,6 +967,13 @@ mod tests {
         assert!(validate_config(&config).unwrap_err().contains("rule"));
         config["rules"][0]["profileId"] = "creative-flow".into();
         assert!(validate_config(&config).is_ok());
+        config["rules"][0]["id"] = "".into();
+        assert!(validate_config(&config).unwrap_err().contains("rule"));
+        config["rules"][0]["id"] = "r".into();
+        let duplicate = config["rules"][0].clone();
+        config["rules"].as_array_mut().unwrap().push(duplicate);
+        assert!(validate_config(&config).unwrap_err().contains("rule"));
+        config["rules"].as_array_mut().unwrap().pop();
         config["rules"][0]["process"] = " ".into();
         assert!(validate_config(&config).is_err());
         assert!(validate_config(

@@ -2,6 +2,29 @@
 
 Finalized October 24, 2026, on Windows with Rust 1.98.1 and Slint 1.18.1. The application requires Rust 1.92 or later.
 
+## Edge-case audit — October 29, 2026
+
+Reviewed the complete Rust/Slint rewrite's storage, recording and archive lifecycle, Discord IPC, validation, Windows detection, editor, asynchronous worker, artwork loading, and native host.
+
+Fixed confirmed failure paths:
+
+- Saved recovery workspaces were abandoned on restart while their original files remained corrupt. Startup now resumes the newest valid recovery file, with deterministic ordering and preference for a valid original. Corrupt files are preserved.
+- A failed configuration write prevented Stop from disabling automatic mode or clearing presence. Stop now completes the runtime action, reports the persistence error, and updates the UI configuration even on failure. A retry saves the disabled setting.
+- Failed application-rule saves discarded the dialog and draft. Both now remain available for retry until persistence succeeds.
+- Profile inputs accepted visible edits while backend callbacks ignored them during busy operations. Profile and rule controls now pause consistently during those operations.
+- Imports accepted an empty rule ID that could produce usage history rejected on restart. Empty IDs are rejected before saving.
+- Template expansion could split an emoji at Discord's 128 UTF-16-unit boundary or publish an empty custom name. Output now preserves complete characters and omits empty resolved names; truncation also avoids an intermediate UTF-16 buffer.
+
+Activity refresh now builds current history once and partitions it into events, totals, and sessions. This removes two redundant projections and their archive scans per refresh while preserving order, live timing, and separate archives.
+
+Verification passed on the final source:
+
+- `cargo test --workspace --locked`: **97 tests passed** (63 core, 34 desktop), including eight new tests and expanded validation/UI coverage.
+- `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo fmt --all -- --check`, and `git diff --check`: passed.
+- Native workflow smoke: **77 checks passed**, using isolated data. Report: `artifacts/native-smoke/7fadde45-1e73-4a3a-ae79-605f12cc1978/smoke-report.json`.
+
+These are source changes; the existing 0.1.2 portable executable and installer were not rebuilt. Real Discord publishing was not exercised during this audit.
+
 ## Windows installer 0.1.2 — October 28, 2026
 
 The appearance release is packaged as `release/Presence-Control-0.1.2-windows-x64-setup.exe` using NSIS 3.13. Both workspace crates, the portable executable, and the installer use version **0.1.2**. Settings and the workspace footer now display the Cargo package version. This release includes the native repaint backport and Dark/Light/System appearance settings.

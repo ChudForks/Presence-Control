@@ -36,7 +36,7 @@ Build a release executable:
 cargo build --release -p presence-desktop
 ```
 
-The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in `C:/Users/Jonathan/AppData/Local/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
+The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in the current user's `%LOCALAPPDATA%/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
 
 A built portable copy with the latest UI and connection fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
 
@@ -99,7 +99,7 @@ To move profiles and rules from **Presence Control Rust Rewrite**, export its wo
 
 Workspace exports contain configuration, not usage history or archives. To migrate history, close both Rust applications, back up the Slint data directory, and copy the corresponding `config.json`, `usage.json`, and `archive.json` together from `%APPDATA%\dev.presence.control.rust\` to the Slint directory. Copying all three preserves rule IDs and their associated totals and sessions. This is replacement, not a history merge. The source application's files are not moved or automatically modified.
 
-Malformed local data is preserved; recovery files receive subsequent writes. Recent unarchived events are held in memory. The app stores no Discord account token, bot token, or client secret.
+Malformed local data is preserved; recovery files receive subsequent writes. On restart, the app resumes the newest valid recovery file while the original remains invalid. A valid original file takes priority. Recent unarchived events are held in memory. The app stores no Discord account token, bot token, or client secret.
 
 ## Architecture and verification
 

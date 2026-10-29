@@ -132,3 +132,57 @@ async fn failed_linked_archive_shutdown_can_retry_without_losing_the_saved_total
         serde_json::from_slice(&std::fs::read(root.path().join("usage.json")).unwrap()).unwrap();
     assert_eq!(usage.totals["editor"], 20_000);
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn failed_stop_save_still_reports_disabled_automatic_mode_to_the_ui() {
+    let root = tempfile::tempdir().unwrap();
+    let config_path = root.path().join("config.json");
+    let config = presence_core::model::Config {
+        automatic: true,
+        ..Default::default()
+    };
+    std::fs::write(&config_path, serde_json::to_vec(&config).unwrap()).unwrap();
+    let (backend, warnings) = Backend::open(root.path(), Arc::new(|_| {})).await;
+    assert!(warnings.is_empty());
+    std::fs::remove_file(&config_path).unwrap();
+    std::fs::create_dir(&config_path).unwrap();
+    let (updates, receiver) = mpsc::channel();
+    let (sender, commands) = unbounded_channel();
+    let task = tokio::spawn(worker(backend, commands, updates));
+    sender.send(Command::Stop).unwrap();
+
+    let mut saw_config = false;
+    let mut saw_runtime = false;
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            match receiver.try_recv() {
+                Ok(Update::Saved { config, selected }) => {
+                    assert!(
+                        !config.automatic,
+                        "failed stop must not leave the toggle on"
+                    );
+                    assert!(selected.is_none());
+                    saw_config = true;
+                }
+                Ok(Update::Runtime(runtime)) => {
+                    assert!(runtime.mode.is_none());
+                    assert!(runtime.active_profile_id.is_none());
+                    saw_runtime = true;
+                }
+                Ok(Update::Finished(result)) => {
+                    assert!(result.unwrap_err().contains("Could not replace local data"));
+                    break;
+                }
+                Ok(_) => {}
+                Err(mpsc::TryRecvError::Empty) => tokio::task::yield_now().await,
+                Err(mpsc::TryRecvError::Disconnected) => panic!("worker stopped unexpectedly"),
+            }
+        }
+    })
+    .await
+    .expect("stop result timed out");
+    assert!(saw_config && saw_runtime);
+    sender.send(Command::Shutdown).unwrap();
+    shutdown_result(&receiver).await.unwrap();
+    task.await.unwrap();
+}

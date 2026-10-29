@@ -396,7 +396,7 @@ export component MainWindow inherits Window {
                             }
                             Divider { }
                             editor-scroll := ScrollView {
-                                enabled: root.modal == "";
+                                enabled: root.modal == "" && !root.busy;
                                 horizontal-scrollbar-policy: always-off;
                                 content-width: self.visible-width;
                                 vertical-stretch: 1;
@@ -406,30 +406,30 @@ export component MainWindow inherits Window {
                                 if root.editor-tab == 0: VerticalLayout {
                                     spacing: 23px;
                                     SectionTitle { title: "The basics"; description: "Set the scene. Tell your story."; }
-                                    Field { enabled: root.modal == ""; label: "Presence name"; hint: "Just for you. A name to find this presence later."; value <=> root.form.name; placeholder: "e.g. Creative flow"; edited(value) => { root.field-edited("name", value); } }
+                                    Field { enabled: root.modal == "" && !root.busy; label: "Presence name"; hint: "Just for you. A name to find this presence later."; value <=> root.form.name; placeholder: "e.g. Creative flow"; edited(value) => { root.field-edited("name", value); } }
                                     HorizontalLayout { cross-axis-alignment: center;
                                         spacing: 18px;
-                                        Field { enabled: root.modal == ""; label: "Display name"; value <=> root.form.app-name; placeholder: "Discord application name"; edited(value) => { root.field-edited("appName", value); } }
-                                        VerticalLayout { horizontal-stretch: 1; min-width: 0px; preferred-width: 0px; spacing: 9px; Text { text: "Activity type"; color: Colors.label; font-size: 12px; } Choice { enabled: root.modal == ""; label: "Activity type"; options: ["Playing", "Listening to", "Watching", "Competing in"]; current-index: root.form.activity-type == 2 ? 1 : root.form.activity-type == 3 ? 2 : root.form.activity-type == 5 ? 3 : 0; selected(index) => { root.field-edited("type", index == 1 ? "2" : index == 2 ? "3" : index == 3 ? "5" : "0"); } } }
+                                        Field { enabled: root.modal == "" && !root.busy; label: "Display name"; value <=> root.form.app-name; placeholder: "Discord application name"; edited(value) => { root.field-edited("appName", value); } }
+                                        VerticalLayout { horizontal-stretch: 1; min-width: 0px; preferred-width: 0px; spacing: 9px; Text { text: "Activity type"; color: Colors.label; font-size: 12px; } Choice { enabled: root.modal == "" && !root.busy; label: "Activity type"; options: ["Playing", "Listening to", "Watching", "Competing in"]; current-index: root.form.activity-type == 2 ? 1 : root.form.activity-type == 3 ? 2 : root.form.activity-type == 5 ? 3 : 0; selected(index) => { root.field-edited("type", index == 1 ? "2" : index == 2 ? "3" : index == 3 ? "5" : "0"); } } }
                                     }
                                     Divider { }
                                     SectionTitle { title: "A little more context"; description: "The details that make it yours."; }
                                     HorizontalLayout { cross-axis-alignment: center;
                                         spacing: 18px;
-                                        Field { enabled: root.modal == ""; label: "Details"; value <=> root.form.details; placeholder: "What are you up to?"; edited(value) => { root.field-edited("details", value); } }
-                                        Field { enabled: root.modal == ""; label: "State"; value <=> root.form.state; placeholder: "Add a little context"; edited(value) => { root.field-edited("state", value); } }
+                                        Field { enabled: root.modal == "" && !root.busy; label: "Details"; value <=> root.form.details; placeholder: "What are you up to?"; edited(value) => { root.field-edited("details", value); } }
+                                        Field { enabled: root.modal == "" && !root.busy; label: "State"; value <=> root.form.state; placeholder: "Add a little context"; edited(value) => { root.field-edited("state", value); } }
                                     }
-                                    if root.form.activity-type == 2: Field { enabled: root.modal == ""; label: "Third line (album or extra text)"; hint: "Also used as the large image's hover text in Artwork."; value <=> root.form.large-text; placeholder: "Album name or another line of context"; edited(value) => { root.field-edited("largeText", value); } }
+                                    if root.form.activity-type == 2: Field { enabled: root.modal == "" && !root.busy; label: "Third line (album or extra text)"; hint: "Also used as the large image's hover text in Artwork."; value <=> root.form.large-text; placeholder: "Album name or another line of context"; edited(value) => { root.field-edited("largeText", value); } }
                                     Note { text: "Make it dynamic. Use {{app}}, {{title}}, or {{process}} in your text to show the matching application's name, window title, or process."; icon: "code"; }
                                     Divider { }
                                     HorizontalLayout { cross-axis-alignment: center;
                                         SectionTitle { title: "Show elapsed time"; description: "A little timer for your current moment."; }
-                                        Toggle { enabled: root.modal == ""; checked: root.form.elapsed; label: "Show elapsed time"; toggled => { root.field-edited("elapsed", root.form.elapsed ? "false" : "true"); } }
+                                        Toggle { enabled: root.modal == "" && !root.busy; checked: root.form.elapsed; label: "Show elapsed time"; toggled => { root.field-edited("elapsed", root.form.elapsed ? "false" : "true"); } }
                                     }
                                     if root.form.activity-type == 2 || root.form.activity-type == 3: VerticalLayout {
                                         spacing: 18px;
-                                        HorizontalLayout { cross-axis-alignment: center; SectionTitle { title: "Playback progress"; description: "Show progress using a duration you enter."; } Toggle { enabled: root.modal == ""; checked: root.form.progress; label: "Playback progress"; toggled => { root.field-edited("progress", root.form.progress ? "false" : "true"); } } }
-                                        if root.form.progress: Field { enabled: root.modal == ""; label: "Playback duration"; hint: "Use m:ss or h:mm:ss. Media playback is not read or controlled."; value <=> root.form.duration; placeholder: "3:00"; edited(value) => { root.field-edited("duration", value); } }
+                                        HorizontalLayout { cross-axis-alignment: center; SectionTitle { title: "Playback progress"; description: "Show progress using a duration you enter."; } Toggle { enabled: root.modal == "" && !root.busy; checked: root.form.progress; label: "Playback progress"; toggled => { root.field-edited("progress", root.form.progress ? "false" : "true"); } } }
+                                        if root.form.progress: Field { enabled: root.modal == "" && !root.busy; label: "Playback duration"; hint: "Use m:ss or h:mm:ss. Media playback is not read or controlled."; value <=> root.form.duration; placeholder: "3:00"; edited(value) => { root.field-edited("duration", value); } }
                                     }
                                 }
                                 if root.editor-tab == 1: VerticalLayout {
@@ -446,12 +446,12 @@ export component MainWindow inherits Window {
                                         }
                                     }
                                     Divider { }
-                                    Field { enabled: root.modal == ""; label: "Large image"; hint: "An uploaded application asset key or an HTTPS image URL."; value <=> root.form.large-image; placeholder: "e.g. workspace or https://…"; edited(value) => { root.field-edited("largeImage", value); } }
-                                    Field { enabled: root.modal == ""; label: "Large image hover text"; value <=> root.form.large-text; placeholder: "A little extra context"; edited(value) => { root.field-edited("largeText", value); } }
+                                    Field { enabled: root.modal == "" && !root.busy; label: "Large image"; hint: "An uploaded application asset key or an HTTPS image URL."; value <=> root.form.large-image; placeholder: "e.g. workspace or https://…"; edited(value) => { root.field-edited("largeImage", value); } }
+                                    Field { enabled: root.modal == "" && !root.busy; label: "Large image hover text"; value <=> root.form.large-text; placeholder: "A little extra context"; edited(value) => { root.field-edited("largeText", value); } }
                                     HorizontalLayout { cross-axis-alignment: center;
                                         spacing: 18px;
-                                        Field { enabled: root.modal == ""; label: "Small image"; value <=> root.form.small-image; placeholder: "Asset key or HTTPS URL"; edited(value) => { root.field-edited("smallImage", value); } }
-                                        Field { enabled: root.modal == ""; label: "Small image hover text"; value <=> root.form.small-text; placeholder: "Hover text"; edited(value) => { root.field-edited("smallText", value); } }
+                                        Field { enabled: root.modal == "" && !root.busy; label: "Small image"; value <=> root.form.small-image; placeholder: "Asset key or HTTPS URL"; edited(value) => { root.field-edited("smallImage", value); } }
+                                        Field { enabled: root.modal == "" && !root.busy; label: "Small image hover text"; value <=> root.form.small-text; placeholder: "Hover text"; edited(value) => { root.field-edited("smallText", value); } }
                                     }
                                     Note { text: "Uploaded asset names belong to the Discord application you connect with. Preview themes stay in this studio; uploaded artwork and HTTPS images are sent to Discord."; icon: "image"; }
                                 }
@@ -462,12 +462,12 @@ export component MainWindow inherits Window {
                                         min-height: button-fields.preferred-height; border-width: 1px; border-color: Colors.line; border-radius: 10px; background: Colors.subtle-hover;
                                         button-fields := VerticalLayout {
                                             padding: 18px; spacing: 19px;
-                                            HorizontalLayout { cross-axis-alignment: center; Text { text: "Button " + (i + 1); color: Colors.label; font-size: 12px; font-weight: Typography.title-weight; vertical-alignment: center; } IconButton { enabled: root.modal == ""; icon: "trash"; label: "Remove button"; clicked => { root.action("remove-button", i); } } }
-                                            Field { enabled: root.modal == ""; label: "Label"; value: i == 0 ? root.form.button1-label : root.form.button2-label; placeholder: "e.g. My portfolio"; edited(value) => { root.field-edited(i == 0 ? "button1Label" : "button2Label", value); } }
-                                            Field { enabled: root.modal == ""; label: "Link"; value: i == 0 ? root.form.button1-url : root.form.button2-url; placeholder: "https://your-site.com"; edited(value) => { root.field-edited(i == 0 ? "button1Url" : "button2Url", value); } }
+                                            HorizontalLayout { cross-axis-alignment: center; Text { text: "Button " + (i + 1); color: Colors.label; font-size: 12px; font-weight: Typography.title-weight; vertical-alignment: center; } IconButton { enabled: root.modal == "" && !root.busy; icon: "trash"; label: "Remove button"; clicked => { root.action("remove-button", i); } } }
+                                            Field { enabled: root.modal == "" && !root.busy; label: "Label"; value: i == 0 ? root.form.button1-label : root.form.button2-label; placeholder: "e.g. My portfolio"; edited(value) => { root.field-edited(i == 0 ? "button1Label" : "button2Label", value); } }
+                                            Field { enabled: root.modal == "" && !root.busy; label: "Link"; value: i == 0 ? root.form.button1-url : root.form.button2-url; placeholder: "https://your-site.com"; edited(value) => { root.field-edited(i == 0 ? "button1Url" : "button2Url", value); } }
                                         }
                                     }
-                                    if root.form.button-count < 2: UiButton { enabled: root.modal == ""; text: "Add a button    " + root.form.button-count + "/2"; icon: "plus"; clicked => { root.action("add-button", ""); } }
+                                    if root.form.button-count < 2: UiButton { enabled: root.modal == "" && !root.busy; text: "Add a button    " + root.form.button-count + "/2"; icon: "plus"; clicked => { root.action("add-button", ""); } }
                                     Note { text: "Buttons appear on your Discord profile for other people. Your own Discord client may hide them."; icon: "link"; }
                                 }
                                 if root.editor-tab == 3: VerticalLayout {
@@ -475,10 +475,10 @@ export component MainWindow inherits Window {
                                     SectionTitle { title: "Your connection to Discord"; description: "Use your global application ID, or choose another for this presence."; }
                                     Note { text: root.global-id == "" ? "Set a global application ID to use across your presences in Settings." : "Global application ID: " + root.global-id; icon: "plug"; }
                                     if root.global-id-dirty: Note { text: "The global application ID has unsaved changes in Settings. Go live saves them when this presence uses the global ID."; }
-                                    UiButton { enabled: root.modal == ""; text: "Open Settings  →"; clicked => { root.page = 4; } }
-                                    Field { enabled: root.modal == ""; label: "Discord application ID override (optional)"; hint: "Leave blank to use the global ID. Override for a different Discord application or its uploaded artwork."; value <=> root.form.application-id; placeholder: "Use global application ID"; edited(value) => { root.field-edited("applicationId", value); } }
+                                    UiButton { enabled: root.modal == "" && !root.busy; text: "Open Settings  →"; clicked => { root.page = 4; } }
+                                    Field { enabled: root.modal == "" && !root.busy; label: "Discord application ID override (optional)"; hint: "Leave blank to use the global ID. Override for a different Discord application or its uploaded artwork."; value <=> root.form.application-id; placeholder: "Use global application ID"; edited(value) => { root.field-edited("applicationId", value); } }
                                     Text { text: "1    Create an application in the Discord Developer Portal.\n\n2    Copy its Application ID from General Information and save it in Settings.\n\n3    Open Discord desktop, save this presence, and go live. Enable activity sharing in Discord's settings."; color: Colors.secondary; font-size: 12px; wrap: word-wrap; }
-                                    UiButton { enabled: root.modal == ""; text: "Open Developer Portal"; icon: "external"; clicked => { root.action("developer-portal", ""); } }
+                                    UiButton { enabled: root.modal == "" && !root.busy; text: "Open Developer Portal"; icon: "external"; clicked => { root.action("developer-portal", ""); } }
                                     Note { text: "Presence Control connects directly to Discord on your computer. Your configuration stays on this device."; icon: "help"; }
                                 }
                             }
@@ -663,11 +663,11 @@ export component MainWindow inherits Window {
                 }
                 if root.modal == "rule": VerticalLayout {
                     spacing: 20px;
-                    Field { label: "Application name"; value <=> root.rule-form.name; placeholder: "e.g. Coding sessions"; edited(value) => { root.rule-edited("name", value); } }
-                    Field { label: "Process name"; value <=> root.rule-form.process; placeholder: "e.g. Code.exe"; edited(value) => { root.rule-edited("process", value); } }
-                    Field { label: "Window title contains (optional)"; value <=> root.rule-form.title-contains; placeholder: "Match part of the window title"; edited(value) => { root.rule-edited("titleContains", value); } }
-                    VerticalLayout { spacing: 9px; Text { text: "Presence"; color: Colors.label; font-size: 12px; } Choice { label: "Presence"; options: root.profile-names; current-index <=> root.rule-form.profile-index; selected(index) => { root.rule-edited("profileIndex", index); } } }
-                    HorizontalLayout { cross-axis-alignment: center; Text { text: "Enabled"; color: Colors.label; vertical-alignment: center; } Toggle { checked: root.rule-form.enabled; label: "Enable rule"; toggled => { root.rule-edited("enabled", root.rule-form.enabled ? "false" : "true"); } } }
+                    Field { enabled: !root.busy; label: "Application name"; value <=> root.rule-form.name; placeholder: "e.g. Coding sessions"; edited(value) => { root.rule-edited("name", value); } }
+                    Field { enabled: !root.busy; label: "Process name"; value <=> root.rule-form.process; placeholder: "e.g. Code.exe"; edited(value) => { root.rule-edited("process", value); } }
+                    Field { enabled: !root.busy; label: "Window title contains (optional)"; value <=> root.rule-form.title-contains; placeholder: "Match part of the window title"; edited(value) => { root.rule-edited("titleContains", value); } }
+                    VerticalLayout { spacing: 9px; Text { text: "Presence"; color: Colors.label; font-size: 12px; } Choice { enabled: !root.busy; label: "Presence"; options: root.profile-names; current-index <=> root.rule-form.profile-index; selected(index) => { root.rule-edited("profileIndex", index); } } }
+                    HorizontalLayout { cross-axis-alignment: center; Text { text: "Enabled"; color: Colors.label; vertical-alignment: center; } Toggle { enabled: !root.busy; checked: root.rule-form.enabled; label: "Enable rule"; toggled => { root.rule-edited("enabled", root.rule-form.enabled ? "false" : "true"); } } }
                     HorizontalLayout { cross-axis-alignment: center; alignment: end; spacing: 10px; UiButton { text: "Cancel"; clicked => { root.action("modal-cancel", ""); } } UiButton { text: "Save application"; primary: true; enabled: !root.busy; clicked => { root.action("save-rule", ""); } } }
                 }
                 if root.modal == "delete-profile": VerticalLayout {

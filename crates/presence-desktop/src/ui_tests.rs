@@ -1,6 +1,6 @@
 //! Regressions at the actual host/UI boundary, without network or real-time waits.
 use super::*;
-use presence_core::model::{Recording, UsageSession};
+use presence_core::model::{ArchivedActivity, LogEntry, Recording, UsageSession};
 use slint::platform::{
     software_renderer::{MinimalSoftwareWindow, RepaintBufferType},
     Platform, PlatformError, WindowAdapter,
@@ -129,6 +129,85 @@ fn appearance_save_preserves_drafts_and_applies_only_after_persistence_succeeds(
 }
 
 #[test]
+fn failed_rule_save_keeps_the_dialog_and_draft_for_retry() {
+    slint::platform::set_platform(Box::new(TestPlatform {
+        window: MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer),
+        elapsed: Rc::new(Cell::new(Duration::ZERO)),
+    }))
+    .unwrap();
+    let ui = MainWindow::new().unwrap();
+    let executor = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let (backend, warnings) = executor.block_on(Backend::open(root.path(), Arc::new(|_| {})));
+    assert!(warnings.is_empty());
+    let (sender, mut commands) = unbounded_channel();
+    let (updates, _receiver) = mpsc::channel();
+    let mut host = Host {
+        editor: Editor::new(executor.block_on(backend.config())),
+        runtime: RuntimeState::default(),
+        sender,
+        updates,
+        executor: executor.handle().clone(),
+        pending: None,
+        rule: None,
+        resume_after_save: false,
+        shutting_down: false,
+        artwork: HashMap::new(),
+        artwork_requests: HashMap::new(),
+        artwork_retry_after: HashMap::new(),
+        notification_timer: slint::Timer::default(),
+    };
+    host.action(&ui, "new-rule", "");
+    let rule = host.rule.as_mut().unwrap();
+    rule.name = "Keep this application draft".into();
+    rule.process = "Code.exe".into();
+    rule.title_contains = "Unsaved title filter".into();
+    let draft = rule.clone();
+    ui.set_rule_form(rule_form(&draft, &host.editor.config));
+
+    // An empty directory blocks the atomic replacement without changing any
+    // normal application data or relying on platform-specific file permissions.
+    let config_path = root.path().join("config.json");
+    std::fs::create_dir(&config_path).unwrap();
+    host.action(&ui, "save-rule", "");
+    assert!(ui.get_busy());
+    let Command::Save { config, .. } = commands.try_recv().unwrap() else {
+        panic!("expected rule save");
+    };
+    let failure = executor.block_on(backend.save_config(&serde_json::to_value(config).unwrap()));
+    host.finish(&ui, failure.map(|_| "Application rule saved.".into()));
+    assert!(!ui.get_busy());
+    assert_eq!(ui.get_modal(), "rule");
+    assert_eq!(host.rule.as_ref(), Some(&draft));
+    assert_eq!(ui.get_rule_form().title_contains, draft.title_contains);
+    assert!(!host
+        .editor
+        .config
+        .rules
+        .iter()
+        .any(|rule| rule.id == draft.id));
+    assert!(!ui.get_message().is_empty());
+
+    std::fs::remove_dir(&config_path).unwrap();
+    host.action(&ui, "save-rule", "");
+    let Command::Save { config, .. } = commands.try_recv().unwrap() else {
+        panic!("expected rule save retry");
+    };
+    let saved = executor
+        .block_on(backend.save_config(&serde_json::to_value(config).unwrap()))
+        .unwrap();
+    host.accept_saved(&ui, saved, None);
+    host.finish(&ui, Ok("Application rule saved.".into()));
+    assert!(ui.get_modal().is_empty());
+    assert!(host.rule.is_none());
+    assert!(host.editor.config.rules.contains(&draft));
+    executor.block_on(backend.shutdown()).unwrap();
+}
+
+#[test]
 fn activity_clock_updates_live_totals_and_moves_only_finished_sessions_into_history() {
     slint::platform::set_platform(Box::new(TestPlatform {
         window: MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer),
@@ -157,6 +236,28 @@ fn activity_clock_updates_live_totals_and_moves_only_finished_sessions_into_hist
         artwork_retry_after: HashMap::new(),
         notification_timer: slint::Timer::default(),
     };
+    host.runtime.logs = vec![
+        LogEntry {
+            id: "latest-event".into(),
+            at: 3_000,
+            message: "Presence updated".into(),
+            ..LogEntry::default()
+        },
+        LogEntry {
+            id: "earlier-event".into(),
+            at: 1_000,
+            message: "Connected".into(),
+            ..LogEntry::default()
+        },
+    ];
+    host.runtime.archive = vec![ArchivedActivity {
+        kind: "event".into(),
+        entry: serde_json::json!({
+            "id": "archived-event", "at": 500, "level": "info", "message": "Saved event"
+        }),
+        archived_at: 1_500,
+        extra: Default::default(),
+    }];
     host.runtime.usage_totals.insert("editor".into(), 10_000);
     host.runtime.usage_sessions = vec![
         UsageSession {
@@ -188,6 +289,11 @@ fn activity_clock_updates_live_totals_and_moves_only_finished_sessions_into_hist
     assert_eq!(ui.get_sessions().row_count(), 1);
     let completed = ui.get_sessions().row_data(0).unwrap();
     assert_eq!(completed.id, "completed");
+    assert_eq!(ui.get_events().row_count(), 2);
+    assert_eq!(ui.get_events().row_data(0).unwrap().id, "latest-event");
+    assert_eq!(ui.get_events().row_data(1).unwrap().id, "earlier-event");
+    assert_eq!(ui.get_archived().row_count(), 1);
+    assert_eq!(ui.get_archived().row_data(0).unwrap().id, "archived-event");
 
     // No backend snapshot arrives between these clock ticks.
     host.refresh_at(&ui, 9_000);
