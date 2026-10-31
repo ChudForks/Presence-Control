@@ -10,7 +10,7 @@ The Slint studio follows the Rust rewrite's black interface, sidebar navigation,
 
 ## Install on Windows
 
-Download the **Windows installer** artifact from a successful run of [Build Windows installer](../../actions/workflows/windows-installer.yml), extract it, and run **`Presence-Control-<version>-windows-x64-setup.exe`**. GitHub requires a signed-in account to download Actions artifacts. Setup supports 64-bit Windows 10 or later, installs for the current Windows account without administrator privileges, and includes the Microsoft C++ runtime. Rust, Node.js, and WebView2 are not required on the destination PC.
+Download the **Windows installer** artifact from a successful run of [Build Windows installer](https://github.com/ChudForks/Presence-Control/actions/workflows/windows-installer.yml), extract it, and run **`Presence-Control-<version>-windows-x64-setup.exe`**. GitHub requires a signed-in account to download Actions artifacts. Setup supports 64-bit Windows 10 or later, installs for the current Windows account without administrator privileges, and includes the Microsoft C++ runtime. Rust, Node.js, and WebView2 are not required on the destination PC.
 
 The default destination is `%LOCALAPPDATA%\Programs\Presence Control Rust`. Setup creates a **Presence Control (Rust)** Start menu entry and offers an optional desktop shortcut. Choose **Quit** from the app's tray menu and rerun setup to upgrade; the previous installation directory is reused. Remove the app through **Windows Settings → Apps → Installed apps → Presence Control (Rust)** or its `Uninstall.exe`. Upgrades and uninstall preserve profiles, rules, usage history, and archives in the [data directory](#data-and-migration-from-the-rust-rewrite).
 
@@ -138,7 +138,7 @@ The optional native smoke run opens the actual Slint window and exercises the Ru
 
 ### Rebuild the installer
 
-The [GitHub Actions workflow](../../actions/workflows/windows-installer.yml) builds the Windows x64 installer on pushes, pull requests, and manual runs, then uploads setup and checksums as an artifact.
+The [GitHub Actions workflow](https://github.com/ChudForks/Presence-Control/actions/workflows/windows-installer.yml) builds the Windows x64 installer on pushes, pull requests, and manual runs, then uploads setup and checksums as an artifact.
 
 Install [NSIS 3](https://nsis.sourceforge.io/Download) alongside the Rust/MSVC build prerequisites, then run:
 
