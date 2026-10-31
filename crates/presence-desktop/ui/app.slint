@@ -198,6 +198,20 @@ component Preview inherits VerticalLayout {
     }
 }
 
+export component AppTray inherits SystemTrayIcon {
+    icon: @image-url("../../../assets/icon.png");
+    tooltip: "Presence Control";
+    in property <bool> quit-enabled: true;
+    callback open();
+    callback quit();
+    clicked => { root.open(); }
+    Menu {
+        MenuItem { title: "Open Presence Control"; activated => { root.open(); } }
+        MenuSeparator {}
+        MenuItem { title: "Quit"; enabled: root.quit-enabled; activated => { root.quit(); } }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "Presence Control — Rust";
     icon: @image-url("../../../assets/icon.png");
@@ -629,6 +643,7 @@ export component MainWindow inherits Window {
                     min-height: 194px; background: Colors.surface; border-width: 1px; border-color: Colors.line; border-radius: 12px;
                     VerticalLayout { padding: 24px; spacing: 18px; Text { text: "About Presence Control"; color: Colors.heading; font-size: 15px; font-weight: Typography.title-weight; } HorizontalLayout { cross-axis-alignment: center; Text { text: "Version"; color: Colors.muted; font-size: 12px; } Text { text: root.app-version + " · Rust Complete Rewrite"; color: Colors.label; font-size: 12px; horizontal-alignment: right; } } HorizontalLayout { cross-axis-alignment: center; Text { text: "Runtime"; color: Colors.muted; font-size: 12px; } Text { text: "Native Rust · Slint"; color: Colors.label; font-size: 12px; horizontal-alignment: right; } } HorizontalLayout { cross-axis-alignment: center; Text { text: "Connection"; color: Colors.muted; font-size: 12px; } Text { text: "Local Discord IPC"; color: Colors.label; font-size: 12px; horizontal-alignment: right; } } }
                 }
+                Note { text: "Closing the window keeps Presence Control running in the system tray. Click its tray icon to reopen, or right-click it and choose Quit to exit."; icon: "help"; }
             }
             Rectangle { min-height: 16px; background: transparent; }
             Text { text: "Presence Control   v" + root.app-version; color: Colors.muted; font-size: 10px; horizontal-alignment: right; }

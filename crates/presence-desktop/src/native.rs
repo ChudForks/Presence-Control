@@ -33,6 +33,42 @@ pub fn place_initial_window(window: &slint::Window) {
 #[cfg(not(windows))]
 pub fn place_initial_window(_: &slint::Window) {}
 
+/// Restore the studio before focusing its native window. A second launch must
+/// also work when the first instance has hidden its window in the tray.
+pub fn show_main_window(window: &slint::Window) -> Result<(), slint::PlatformError> {
+    window.show()?;
+    window.set_minimized(false);
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::{
+            Foundation::{HWND, LPARAM},
+            UI::WindowsAndMessaging::{
+                EnumWindows, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+                SetForegroundWindow, ShowWindow, GW_OWNER, SW_RESTORE,
+            },
+        };
+        unsafe extern "system" fn activate(window: HWND, parameter: LPARAM) -> i32 {
+            let mut pid = 0;
+            unsafe { GetWindowThreadProcessId(window, &mut pid) };
+            if pid == parameter as u32
+                && unsafe { IsWindowVisible(window) } != 0
+                && unsafe { GetWindow(window, GW_OWNER) }.is_null()
+            {
+                if unsafe { IsIconic(window) } != 0 {
+                    unsafe { ShowWindow(window, SW_RESTORE) };
+                }
+                unsafe { SetForegroundWindow(window) };
+                return 0;
+            }
+            1
+        }
+        // SAFETY: the callback receives only this process's PID, retains no
+        // pointers, and completes synchronously on the UI thread.
+        unsafe { EnumWindows(Some(activate), std::process::id() as LPARAM) };
+    }
+    Ok(())
+}
+
 pub fn data_directory() -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("PRESENCE_CONTROL_DATA_DIR") {
         if path.is_empty() {
@@ -104,39 +140,14 @@ impl InstanceGuard {
         }
     }
 
-    /// Called on the UI thread's timer. Activation is scoped to this executable's
-    /// PID, so a similarly titled app or another workspace cannot receive it.
+    /// Consume a second launch's request. The UI restores its Slint window before
+    /// focusing it, since it may currently be hidden in the tray.
     pub fn poll_activation(&self) -> bool {
         use windows_sys::Win32::{
-            Foundation::{HWND, LPARAM, WAIT_OBJECT_0},
-            System::Threading::WaitForSingleObject,
-            UI::WindowsAndMessaging::{
-                EnumWindows, GetWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-                SetForegroundWindow, ShowWindow, GW_OWNER, SW_RESTORE,
-            },
+            Foundation::WAIT_OBJECT_0, System::Threading::WaitForSingleObject,
         };
-        if unsafe { WaitForSingleObject(self.activation, 0) } != WAIT_OBJECT_0 {
-            return false;
-        }
-        unsafe extern "system" fn activate(window: HWND, parameter: LPARAM) -> i32 {
-            let mut pid = 0;
-            unsafe { GetWindowThreadProcessId(window, &mut pid) };
-            if pid == parameter as u32
-                && unsafe { IsWindowVisible(window) } != 0
-                && unsafe { GetWindow(window, GW_OWNER) }.is_null()
-            {
-                if unsafe { IsIconic(window) } != 0 {
-                    unsafe { ShowWindow(window, SW_RESTORE) };
-                }
-                unsafe { SetForegroundWindow(window) };
-                return 0;
-            }
-            1
-        }
-        // SAFETY: the callback receives only a PID value, retains no pointers,
-        // and completes synchronously on this UI thread.
-        unsafe { EnumWindows(Some(activate), std::process::id() as LPARAM) };
-        true
+        // SAFETY: this guard owns the event handle throughout the nonblocking wait.
+        unsafe { WaitForSingleObject(self.activation, 0) == WAIT_OBJECT_0 }
     }
 }
 

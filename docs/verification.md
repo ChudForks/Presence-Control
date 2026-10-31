@@ -2,6 +2,22 @@
 
 Finalized October 24, 2026, on Windows with Rust 1.98.1 and Slint 1.18.1. The application requires Rust 1.92 or later.
 
+## Close to tray 0.1.3 — October 31, 2026
+
+The desktop enables Slint 1.18.1's native `SystemTrayIcon` support and uses the existing embedded application icon. Closing the window hides it without sending a backend shutdown command. The visible tray keeps Slint's event loop alive, so automatic detection, Discord publishing, recording, and asynchronous saves continue. The tray offers Open Presence Control and Quit; clicking the icon also opens the studio. Second-launch activation now shows the Slint window before focusing its native Windows handle.
+
+Quit uses the existing profile Save/Discard/Cancel and checkpointing shutdown flow. An unsaved profile reveals the studio before prompting; a clean Quit can finish while hidden. Busy operations disable the tray Quit entry. A failed shutdown restores the window and offers another tray Quit to retry. Setup's locked-application message and the packaged instructions now explain how to quit from the tray.
+
+Verification:
+
+- **97 workspace tests passed** (63 core, 34 desktop), including existing checkpoint failure/retry and instance signaling coverage.
+- Clippy with `--workspace --all-targets --locked -- -D warnings`, formatting, and diff whitespace checks passed.
+- The debug native smoke run passed **87 checks** in `artifacts/native-smoke/ea7a174c-f127-444e-a281-bc96fbf29d01/smoke-report.json`. Ten added checks cover hiding during an asynchronous save, finishing work while hidden, retaining and saving a draft, tray Open, minimized restoration, second-launch activation, unsaved Quit and Cancel, and clean tray shutdown. These invoke the production tray callbacks and Slint close event; they do not click the Windows shell menu.
+- Windows UI automation clicked the actual title-bar X and sent Alt+F4 against an isolated workspace. Both removed the visible window while its process remained running. A real second process exited successfully and restored the original window with the same native handle. Report: `artifacts/tray-ui/b5c98f26-6d5b-46ef-9364-95c3ff3be648/ui-report.json`. The test process was then stopped during cleanup.
+- Isolated installer verification passed **28 lifecycle checks**, including install, upgrade, locked-file refusal, bundled runtime loading, and uninstall, while preserving normal application data. Report: `artifacts/installer-test/305c164b-607d-4c1a-974c-a252ea11f1c3/installer-report.json`. The installed release passed all **87 native workflow checks** in `artifacts/native-smoke/3ed23eda-4d06-4765-9843-da146967f986/smoke-report.json`.
+
+The release build and NSIS packaging succeeded. Both crates and the portable executable/installer use **0.1.3**. The portable executable is **17,713,664 bytes**, SHA-256 `b5e8832bb5354afd21792a2cad26892307e7e3e43c60d93e575504a8b534036f`; setup is **6,524,157 bytes**. All **15** entries in `release/SHA256SUMS.txt` were verified. The previous portable executable is retained as `release/presence-control-before-tray-20261031.exe`. Real Discord publishing was not exercised with a user's application ID.
+
 ## Edge-case audit — October 29, 2026
 
 Reviewed the complete Rust/Slint rewrite's storage, recording and archive lifecycle, Discord IPC, validation, Windows detection, editor, asynchronous worker, artwork loading, and native host.
@@ -195,4 +211,4 @@ The published upstream backend package omits its monorepo Slint test dependency,
 
 The renderer still uses grayscale antialiasing, not WebView2/ClearType RGB subpixel output, so pixel-for-pixel equality with the older application is not established.
 
-Callback smoke checks establish the native host/backend path and persisted behavior. They do not simulate every mouse/keyboard interaction or automatically establish visual fidelity; screenshots require review. Real Discord publishing needs an actual application ID and Discord desktop and has not been verified here. Native import/export dialogs are supplied by the Windows Rust host; their complete manual interaction is outside the callback smoke coverage. Tray behavior is not implemented.
+Callback smoke checks establish the native host/backend path and persisted behavior. They do not simulate every mouse/keyboard interaction or automatically establish visual fidelity; screenshots require review. Real Discord publishing needs an actual application ID and Discord desktop and has not been verified here. Native import/export dialogs are supplied by the Windows Rust host; their complete manual interaction is outside the callback smoke coverage. Native tray lifecycle coverage is recorded in the 0.1.3 section above; interaction with the Windows shell tray menu remains in the manual checklist.

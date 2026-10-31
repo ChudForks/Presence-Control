@@ -111,7 +111,7 @@ Function ${PREFIX}CheckWritable
   retry:
     System::Call 'kernel32::CreateFileW(w "$INSTDIR\presence-control.exe", i 0x40000000, i 7, p 0, i 3, i 0, p 0) p .r0'
     ${If} $0 == -1
-      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Close Presence Control before continuing. If it is already closed, check that you can write to this installation folder." /SD IDCANCEL IDRETRY retry
+      MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "Quit Presence Control from its system tray menu before continuing. If it has already exited, check that you can write to this installation folder." /SD IDCANCEL IDRETRY retry
       SetErrorLevel 2
       Abort
     ${EndIf}

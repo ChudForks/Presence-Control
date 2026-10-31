@@ -1,21 +1,25 @@
-# Presence Control — Rust Complete Rewrite
+# Presence Control
 
-A native Windows Discord Rich Presence studio built with Rust and Slint. This is a separate Git repository nested in the Presence Control workspace, inherited from **Presence Control Rust Rewrite**. Its application code and backend run in Rust; its native interface is defined in Slint markup and compiled into the executable.
+[![Made with Slint](https://raw.githubusercontent.com/slint-ui/slint/master/logo/MadeWithSlint-logo-whitebg.png)](https://slint.dev/)
+
+Presence Control is a native Windows Discord Rich Presence studio. It is an AI port of an unreleased Electron-based version of the app, rebuilt 100% by AI in Rust and Slint. This complete rewrite builds on the earlier Rust rewrite; see [migration notes](docs/migration.md) for the detailed source provenance. Its application code and backend run in Rust, and its user interface is made with [Slint](https://slint.dev/).
+
+Slint is used under the [Slint Royalty-free Desktop, Mobile, and Web Applications License 2.0](vendor/i-slint-renderer-software/LICENSES/LicenseRef-Slint-Royalty-free-2.0.md); the badge above provides its public-page attribution. The installer includes the license and third-party notices. Slint is also available under other licenses; see [Slint's licensing FAQ](https://github.com/slint-ui/slint/blob/v1.18.1/FAQ.md#licensing).
 
 The Slint studio follows the Rust rewrite's black interface, sidebar navigation, saved-presence list, profile editor, Discord-style preview, application rules, activity history, archive, and settings. It does not use a webview, Tauri, React, Node.js, JavaScript, or PowerShell to run the application.
 
 ## Install on Windows
 
-Run **`release/Presence-Control-0.1.2-windows-x64-setup.exe`**. Setup supports 64-bit Windows 10 or later, installs for the current Windows account without administrator privileges, and includes the Microsoft C++ runtime. Rust, Node.js, and WebView2 are not required on the destination PC.
+Download the **Windows installer** artifact from a successful run of [Build Windows installer](../../actions/workflows/windows-installer.yml), extract it, and run **`Presence-Control-<version>-windows-x64-setup.exe`**. GitHub requires a signed-in account to download Actions artifacts. Setup supports 64-bit Windows 10 or later, installs for the current Windows account without administrator privileges, and includes the Microsoft C++ runtime. Rust, Node.js, and WebView2 are not required on the destination PC.
 
-The default destination is `%LOCALAPPDATA%\Programs\Presence Control Rust`. Setup creates a **Presence Control (Rust)** Start menu entry and offers an optional desktop shortcut. Close the app and rerun setup to upgrade; the previous installation directory is reused. Remove the app through **Windows Settings → Apps → Installed apps → Presence Control (Rust)** or its `Uninstall.exe`. Upgrades and uninstall preserve profiles, rules, usage history, and archives in the [data directory](#data-and-migration-from-the-rust-rewrite).
+The default destination is `%LOCALAPPDATA%\Programs\Presence Control Rust`. Setup creates a **Presence Control (Rust)** Start menu entry and offers an optional desktop shortcut. Choose **Quit** from the app's tray menu and rerun setup to upgrade; the previous installation directory is reused. Remove the app through **Windows Settings → Apps → Installed apps → Presence Control (Rust)** or its `Uninstall.exe`. Upgrades and uninstall preserve profiles, rules, usage history, and archives in the [data directory](#data-and-migration-from-the-rust-rewrite).
 
-This local build is unsigned. The installer and its payload have SHA-256 hashes in `release/SHA256SUMS.txt`.
+The installer is unsigned. The artifact includes `SHA256SUMS.txt` with SHA-256 hashes for setup and its payload.
 
 Silent setup is supported with `/S`. A custom `/D=` directory must be the last argument, with no quotes around its value, including when it contains spaces:
 
 ```powershell
-Start-Process '.\release\Presence-Control-0.1.2-windows-x64-setup.exe' -ArgumentList '/S /D=C:\Users\you\Apps\Presence Control' -Wait
+Start-Process '.\release\Presence-Control-0.1.3-windows-x64-setup.exe' -ArgumentList '/S /D=C:\Users\you\Apps\Presence Control' -Wait
 ```
 
 Silent uninstall uses `Uninstall.exe /S`. Setup returns code `2` when it cannot proceed because the application is locked, another setup is running, or Windows is unsupported. It never terminates the running application.
@@ -36,13 +40,13 @@ Build a release executable:
 cargo build --release -p presence-desktop
 ```
 
-The default Cargo output is `target/release/presence-control.exe`. This checkout has a Git-ignored `.cargo/config.toml` that puts build artifacts in the current user's `%LOCALAPPDATA%/PresenceControlRustBuild/target` to conserve space on the project drive. The machine-local Cargo cache setting is not part of the repository and fresh clones use Cargo's normal target directory.
+The default Cargo output is `target/release/presence-control.exe`. A local, Git-ignored `.cargo/config.toml` can change the output directory.
 
-A built portable copy with the latest UI and connection fixes is available in this checkout at **`release/presence-control.exe`**. Close any existing Presence Control window before launching it for normal use.
+The installer build also produces a portable copy at **`release/presence-control.exe`**. Choose **Quit** from the tray menu of any existing copy before launching a new build for normal use.
 
 For portable use on another PC, copy the executable **and all accompanying DLLs** from `release/` together. The installer packages these files automatically.
 
-The build embeds the application icon. Closing the window saves recorded time and disconnects Discord; there is no background tray mode.
+The build embeds the application icon and displays it in the Windows system tray. **X** (or **Alt+F4**) hides the window while Discord presence, automatic application detection, and time recording continue. Unsaved edits remain available when you reopen it. Click the tray icon or choose **Open Presence Control** from its right-click menu to restore the window; launching a second copy also restores the existing instance. Choose **Quit** from the tray menu to exit: unsaved profile edits get the usual Save/Discard/Cancel prompt, then recorded time is saved and Discord disconnects. If saving recorded time fails, the window reopens with an error and you can retry Quit.
 
 The UI uses Slint's native Winit window backend and software renderer. A [pinned renderer patch](vendor/i-slint-renderer-software/LOCAL_CHANGES.md) enables Windows font hinting and display-contrast correction for text throughout the app, including inputs and small helper text. Font weights follow the earlier studio's typography. Application detection uses Windows APIs directly, and Discord transport uses Rust/Tokio named pipes.
 
@@ -134,6 +138,8 @@ The optional native smoke run opens the actual Slint window and exercises the Ru
 
 ### Rebuild the installer
 
+The [GitHub Actions workflow](../../actions/workflows/windows-installer.yml) builds the Windows x64 installer on pushes, pull requests, and manual runs, then uploads setup and checksums as an artifact.
+
 Install [NSIS 3](https://nsis.sourceforge.io/Download) alongside the Rust/MSVC build prerequisites, then run:
 
 ```powershell
@@ -157,4 +163,4 @@ The repaint probe creates its own small native window without reading applicatio
 cargo run -p presence-core --example headless -- .\headless-data
 ```
 
-Windows application detection is platform specific. Real Discord publishing requires Discord desktop and a valid application ID. Automated mock IPC tests do not establish that a particular real Discord account/application has been verified. The project provides a Windows installer and a portable executable; tray mode is not implemented.
+Windows application detection is platform specific. Real Discord publishing requires Discord desktop and a valid application ID. Automated mock IPC tests do not establish that a particular real Discord account/application has been verified. The project provides a Windows installer and a portable executable with close-to-tray support.

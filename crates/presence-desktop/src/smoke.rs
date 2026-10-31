@@ -1,6 +1,6 @@
 //! Opt-in smoke run against real native callbacks and the actual asynchronous host.
 //! `--smoke-test` always creates its own workspace beneath `artifacts/native-smoke`.
-use crate::{now_ms, Host, MainWindow};
+use crate::{now_ms, AppTray, Host, MainWindow};
 use presence_core::{model::*, storage, Backend};
 use serde_json::json;
 use slint::{ComponentHandle, Model};
@@ -106,7 +106,12 @@ struct State {
     outcome: Option<Result<(), String>>,
 }
 
-pub fn schedule(ui: &MainWindow, host: Rc<RefCell<Host>>, root: PathBuf) -> SmokeRun {
+pub fn schedule(
+    ui: &MainWindow,
+    tray: &AppTray,
+    host: Rc<RefCell<Host>>,
+    root: PathBuf,
+) -> SmokeRun {
     let folder = root.parent().unwrap_or(&root).to_path_buf();
     let state = Rc::new(RefCell::new(State {
         root,
@@ -125,12 +130,16 @@ pub fn schedule(ui: &MainWindow, host: Rc<RefCell<Host>>, root: PathBuf) -> Smok
     }));
     let timer = slint::Timer::default();
     let weak = ui.as_weak();
+    let tray_weak = tray.as_weak();
     let runner = state.clone();
     timer.start(
         slint::TimerMode::Repeated,
         Duration::from_millis(180),
         move || {
             let Some(ui) = weak.upgrade() else {
+                return;
+            };
+            let Some(tray) = tray_weak.upgrade() else {
                 return;
             };
             let mut state = runner.borrow_mut();
@@ -142,7 +151,7 @@ pub fn schedule(ui: &MainWindow, host: Rc<RefCell<Host>>, root: PathBuf) -> Smok
             let result = if state.started.elapsed() > Duration::from_secs(90) {
                 Err(format!("Native smoke timed out at step {}.", state.step))
             } else {
-                state.tick(&ui, &host)
+                state.tick(&ui, &tray, &host)
             };
             if let Err(error) = result {
                 let error = format!("Native smoke step {} failed: {error}", state.step);
@@ -373,7 +382,12 @@ impl State {
         ui.invoke_rule_edited(field.into(), value.into());
     }
 
-    fn tick(&mut self, ui: &MainWindow, host: &Rc<RefCell<Host>>) -> Result<(), String> {
+    fn tick(
+        &mut self,
+        ui: &MainWindow,
+        tray: &AppTray,
+        host: &Rc<RefCell<Host>>,
+    ) -> Result<(), String> {
         if ui.get_busy() {
             return Ok(());
         }
@@ -1118,6 +1132,94 @@ impl State {
                     self.config()?.appearance == Appearance::Dark && ui.get_dark_appearance(),
                     "Dark mode restores the OLED black palette",
                 )?;
+                Self::edit(ui, host, "details", "Unsaved tray smoke draft");
+                Self::action(ui, "set-appearance", "light");
+                ui.window()
+                    .dispatch_event(slint::platform::WindowEvent::CloseRequested);
+                self.check(
+                    !ui.window().is_visible()
+                        && !host.borrow().shutting_down
+                        && ui.get_modal().is_empty(),
+                    "Closing during a save hides the studio without shutting down or prompting",
+                )?;
+            }
+            54 => {
+                self.check(
+                    !ui.window().is_visible()
+                        && self.config()?.appearance == Appearance::Light
+                        && ui.get_appearance() == "light"
+                        && host.borrow().editor.draft.details == "Unsaved tray smoke draft",
+                    "The event loop and backend finish work while hidden and retain unsaved edits",
+                )?;
+                tray.invoke_open();
+                self.check(
+                    ui.window().is_visible()
+                        && host.borrow().editor.draft.details == "Unsaved tray smoke draft",
+                    "The tray Open command reopens the existing draft",
+                )?;
+            }
+            55 => {
+                ui.window().set_minimized(true);
+            }
+            56 => {
+                tray.invoke_open();
+                self.check(
+                    ui.window().is_visible() && !ui.window().is_minimized(),
+                    "The tray Open command restores a minimized window",
+                )?;
+                ui.window()
+                    .dispatch_event(slint::platform::WindowEvent::CloseRequested);
+                #[cfg(windows)]
+                self.check(
+                    crate::native::InstanceGuard::acquire(&self.root)?.is_none(),
+                    "A second launch signals the hidden instance instead of creating another",
+                )?;
+                #[cfg(not(windows))]
+                tray.invoke_open();
+            }
+            57 => {
+                self.check(
+                    ui.window().is_visible() && !host.borrow().shutting_down,
+                    "Second-launch activation reopens the studio from the tray",
+                )?;
+                ui.window()
+                    .dispatch_event(slint::platform::WindowEvent::CloseRequested);
+                tray.invoke_quit();
+                self.check(
+                    ui.window().is_visible()
+                        && ui.get_modal() == "unsaved"
+                        && !host.borrow().shutting_down,
+                    "Tray Quit reveals Save, Discard, and Cancel before exiting with an unsaved draft",
+                )?;
+                Self::action(ui, "modal-cancel", "");
+                self.check(
+                    ui.get_modal().is_empty()
+                        && host.borrow().editor.dirty()
+                        && !host.borrow().shutting_down,
+                    "Canceling tray Quit keeps the application and unsaved edits alive",
+                )?;
+                Self::action(ui, "save-profile", "");
+            }
+            58 => {
+                self.check(
+                    !host.borrow().editor.dirty()
+                        && self
+                            .config()?
+                            .profiles
+                            .iter()
+                            .any(|profile| profile.details == "Unsaved tray smoke draft"),
+                    "A draft retained across close-to-tray can still be saved",
+                )?;
+                Self::action(ui, "set-appearance", "dark");
+            }
+            59 => {
+                ui.window()
+                    .dispatch_event(slint::platform::WindowEvent::CloseRequested);
+                tray.invoke_quit();
+                self.check(
+                    !ui.window().is_visible() && host.borrow().shutting_down && ui.get_busy(),
+                    "Tray Quit starts the checkpointing shutdown without reopening a clean studio",
+                )?;
                 self.outcome = Some(Ok(()));
                 self.report();
                 eprintln!(
@@ -1125,7 +1227,6 @@ impl State {
                     self.checks.len(),
                     self.folder.display()
                 );
-                Self::action(ui, "quit", "");
             }
             _ => return Err("Smoke state machine reached an unexpected step.".into()),
         }

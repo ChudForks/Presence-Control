@@ -1,0 +1,30 @@
+name: Build Windows installer
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --no-progress --yes
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1
+      - name: Upload Windows installer, portable files, and checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: presence-control-windows-x64-installer
+          path: release/
+          if-no-files-found: error

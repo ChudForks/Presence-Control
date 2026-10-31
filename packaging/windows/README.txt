@@ -6,8 +6,8 @@ No bot token or client secret is needed.
 
 Setup installs for the current Windows account without administrator privileges.
 It creates a Start menu entry named "Presence Control (Rust)". A desktop shortcut
-is optional. Run setup again to update the installed application; close any
-running copy first. No Node.js, Rust, npm, or WebView2 installation is required.
+is optional. Run setup again to update the installed application; choose Quit
+from the tray menu of any running copy first. No Node.js, Rust, npm, or WebView2 installation is required.
 The Microsoft Visual C++ runtime DLLs are included beside the executable.
 
 Saved profiles, rules, activity history, and archives are stored in:
@@ -25,3 +25,10 @@ For unattended removal: Uninstall.exe /S
 Exit code 0 means success; code 2 includes a running app or unsupported Windows.
 
 For portable use, keep presence-control.exe and all accompanying DLLs together.
+
+Closing the window keeps Presence Control running in the Windows system tray.
+Discord presence, automatic application detection, and time recording continue.
+Click the tray icon to reopen, or right-click for Open Presence Control and Quit.
+Quit saves recorded time and disconnects Discord before exiting. Unsaved profile
+edits prompt for Save, Discard, or Cancel. Launching a second copy also reopens
+the existing window.

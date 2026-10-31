@@ -564,6 +564,18 @@ impl Host {
             self.continue_pending(ui);
         }
     }
+    fn request_quit(&mut self, ui: &MainWindow) -> Result<(), slint::PlatformError> {
+        if self.shutting_down || ui.get_busy() {
+            return Ok(());
+        }
+        // A tray Quit must expose the existing Save/Discard/Cancel dialog when
+        // a draft is present, without flashing the window for a clean shutdown.
+        if self.editor.dirty() {
+            native::show_main_window(ui.window())?;
+        }
+        self.request_pending(ui, Pending::Close);
+        Ok(())
+    }
     fn action(&mut self, ui: &MainWindow, action: &str, argument: &str) {
         if ui.get_busy() && !matches!(action, "dismiss-message" | "modal-cancel") {
             return;
@@ -742,7 +754,7 @@ impl Host {
                     self.resume_after_save = false;
                     ui.set_modal("".into());
                 }
-                "quit" => self.request_pending(ui, Pending::Close),
+                "quit" => self.request_quit(ui).map_err(|error| error.to_string())?,
                 _ => return Err(format!("Unknown interface action: {action}")),
             }
             Ok(())
@@ -904,6 +916,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (sender, commands) = unbounded_channel();
     executor.spawn(worker(backend.clone(), commands, updates.clone()));
     let ui = MainWindow::new()?;
+    let tray = AppTray::new()?;
     ui.set_app_version(env!("CARGO_PKG_VERSION").into());
     ui.on_rule_drag_data(rule_drag_data);
     ui.on_rule_drag_id(rule_drag_id);
@@ -991,29 +1004,48 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
+    // Slint's visible native tray keeps the event loop alive after the last
+    // window is hidden. Closing never stops the backend or discards a draft.
+    ui.window()
+        .on_close_requested(|| slint::CloseRequestResponse::HideWindow);
     let weak = ui.as_weak();
     let handler = host.clone();
-    ui.window().on_close_requested(move || {
+    tray.on_open(move || {
         if let Some(ui) = weak.upgrade() {
-            let mut host = handler.borrow_mut();
-            if !host.shutting_down && !ui.get_busy() {
-                host.request_pending(&ui, Pending::Close);
+            if let Err(error) = native::show_main_window(ui.window()) {
+                handler.borrow().error(&ui, error.to_string());
             }
         }
-        slint::CloseRequestResponse::KeepWindowShown
     });
     let weak = ui.as_weak();
+    let handler = host.clone();
+    tray.on_quit(move || {
+        if let Some(ui) = weak.upgrade() {
+            handler.borrow_mut().action(&ui, "quit", "");
+        }
+    });
+    let weak = ui.as_weak();
+    let tray_weak = tray.as_weak();
     let handler = host.clone();
     let timer = slint::Timer::default();
     let mut last_second = 0;
     timer.start(slint::TimerMode::Repeated, Duration::from_millis(50), move || {
-        instance.poll_activation();
-        let Some(ui) = weak.upgrade() else { return; };
+        let Some(ui) = weak.upgrade() else {
+            return;
+        };
         let mut host = handler.borrow_mut();
+        if instance.poll_activation() {
+            if let Err(error) = native::show_main_window(ui.window()) {
+                host.error(&ui, error.to_string());
+            }
+        }
         let mut changed = false;
         while let Ok(update) = receiver.try_recv() {
             match update {
-                Update::Runtime(runtime) => { host.runtime = *runtime; changed = true; }
+                Update::Runtime(runtime) => {
+                    host.runtime = *runtime;
+                    changed = true;
+                }
                 Update::Saved { config, selected } => {
                     host.accept_saved(&ui, *config, selected.as_deref());
                     changed = true;
@@ -1022,12 +1054,32 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     host.finish(&ui, result);
                     changed = true;
                 }
-                Update::Shutdown(result) => { if let Err(error) = result { host.shutting_down = false; ui.set_busy(false); host.error(&ui, format!("Could not save application time: {error}. Close again to retry.")); } else { let _ = slint::quit_event_loop(); } }
-                Update::Artwork(url, result) => { host.receive_artwork(url, result); changed = true; }
+                Update::Shutdown(result) => {
+                    if let Err(error) = result {
+                        host.shutting_down = false;
+                        ui.set_busy(false);
+                        let _ = native::show_main_window(ui.window());
+                        host.error(&ui, format!("Could not save application time: {error}. Choose Quit from the tray again to retry."));
+                    } else {
+                        let _ = slint::quit_event_loop();
+                    }
+                }
+                Update::Artwork(url, result) => {
+                    host.receive_artwork(url, result);
+                    changed = true;
+                }
             }
-        } let second = now_ms() / 1000; if changed || second != last_second { last_second = second; host.refresh(&ui); }
+        }
+        let second = now_ms() / 1000;
+        if changed || second != last_second {
+            last_second = second;
+            host.refresh(&ui);
+        }
+        if let Some(tray) = tray_weak.upgrade() {
+            tray.set_quit_enabled(!ui.get_busy() && !host.shutting_down);
+        }
     });
-    let smoke_run = smoke_root.map(|root| smoke::schedule(&ui, host.clone(), root));
+    let smoke_run = smoke_root.map(|root| smoke::schedule(&ui, &tray, host.clone(), root));
     ui.run()?;
     executor.block_on(backend.shutdown())?;
     if let Some(smoke_run) = smoke_run {

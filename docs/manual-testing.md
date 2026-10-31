@@ -68,17 +68,22 @@ The automated checks already cover 89 Rust tests and 77 native callback/workflow
 - Try malformed or unrelated JSON. An error should appear and the existing workspace should remain available.
 - Configuration exports contain profiles and rules; usage and archive files are separate.
 
-## 8. Exit and second launch
+## 8. Tray, exit, and second launch
 
 - Launch a second copy using the same data directory. It should bring the existing Slint window forward.
-- Close while an automatic presence is recording. Presence should disconnect, recorded time should checkpoint, and the process should exit. There is no tray/background mode.
+- Close with **X** and **Alt+F4**, including during a save. The window and its taskbar button should disappear, while the process and Presence Control tray icon remain. Check the tray overflow if Windows hides the icon there.
+- Close while an automatic presence is recording. Discord presence, application detection, and recorded time should continue. Reopen later and confirm time advanced without an extra completed session caused by hiding the window.
+- Click the tray icon to reopen. Right-click it and choose **Open Presence Control**; also test this while the window is minimized. Its page, drafts, and dialogs should be retained.
+- While hidden, launch a second copy with the same data directory. The existing window should reopen, with only one process serving that workspace.
+- Edit a profile, close to tray, then choose **Quit** from the tray menu. The studio should reopen with Save/Discard/Cancel. Cancel must retain the draft; Save and Discard must finish their respective action before exiting.
+- Choose **Quit** from the tray with no unsaved edits. The process and tray icon should disappear, Discord should disconnect, and recorded time and linked archives should be saved. Quit is disabled while an operation is busy. A failed shutdown save must reopen the studio and allow another tray Quit to retry.
 
 ## 9. Windows installer
 
-- Run `release/Presence-Control-0.1.1-windows-x64-setup.exe`. Confirm the wizard icon, readable layout at your display scaling, welcome text, directory selection, progress, and finish page.
+- Run `release/Presence-Control-0.1.3-windows-x64-setup.exe`. Confirm the wizard icon, readable layout at your display scaling, welcome text, directory selection, progress, and finish page.
 - Keep the default per-user directory; installation should not ask for administrator privileges. Select the optional desktop shortcut, complete setup, and use the launch checkbox.
 - Start the installed app from both the Start menu and desktop shortcut. Confirm it opens the same saved workspace as the portable Rust/Slint app.
-- Leave the app open and rerun setup. Confirm setup requests that the app be closed; close it normally and select Retry. Confirm the saved workspace remains available after upgrade.
+- Leave the app running in the tray and rerun setup. Confirm setup requests that the app be quit; choose **Quit** from its tray menu and select Retry. Confirm the saved workspace remains available after upgrade.
 - Remove **Presence Control (Rust)** through Windows Installed apps. Confirm the interactive removal, both shortcuts, and installed payload are removed, while `%APPDATA%\dev.presence.control.rust.slint` remains.
 - Reinstall and confirm the saved workspace and history return. A clean second PC check should also confirm the bundled runtime works without development tools installed.
 
